@@ -228,14 +228,14 @@ initial begin
         $display("Error count = %d\n", err_cnt);
     end else
         $display("\n%0t TEST PASSED\n", $realtime);
-    $stop;
+    $finish;
 end
 
 initial begin
     #(SIM_TIMEOUT);
     $display("\n%0t TEST FAILED", $realtime);
     $display("SIM TIMEOUT!\n");
-    $stop;
+    $finish;
 end
 
 endmodule
