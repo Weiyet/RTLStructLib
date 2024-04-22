@@ -179,7 +179,7 @@ task fifo_read_write_rand_simul();
               if(!fifo_empty) begin
                  data_rd_act <= data_rd;
                  fifo_rd_stream.push_back(data_rd_act);
-                 fifo_expected.pop_front();
+                 data_rd_exp = fifo_expected.pop_front();
                  $display("%0t Data read = %d, FIFO entry = %d", $realtime, data_rd_act, $size(fifo_expected));
               end 
            end
@@ -196,6 +196,14 @@ task fifo_read_write_rand_simul();
 endtask
 
 initial begin
+    string vcdfile;
+    int vcdlevel;
+
+    rst = 1'b1;
+    if ($value$plusargs("VCDFILE=%s",vcdfile))
+        $dumpfile(vcdfile);
+    if ($value$plusargs("VCDLEVEL=%d",vcdlevel))
+        $dumpvars(vcdlevel);
     rst = 1;
     #100 
     rst = 0;
