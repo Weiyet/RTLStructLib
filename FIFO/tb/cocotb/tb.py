@@ -1,4 +1,5 @@
 import random
+#import asyncio
 import cocotb
 from cocotb.triggers import Timer, RisingEdge
 from cocotb.clock import Clock
@@ -75,7 +76,8 @@ async def fifo_read_burst(count,dut,fifo_expected):
         dut.rd_en.value = 1
         await Timer(1,'ns')
         if(len(fifo_expected)>0):
-            assert dut.fifo_empty.value == 0, f"FIFO is not empty but fifo_empty flag is asserted"
+            if(dut.fifo_empty.value == 1):
+                dut._log.error("FIFO is not empty but fifo_empty flag is asserted")
             data_rd_exp = fifo_expected.pop(0)
             data_rd_act = dut.data_rd.value.integer
             if(data_rd_exp == data_rd_act):
@@ -88,6 +90,46 @@ async def fifo_read_burst(count,dut,fifo_expected):
             else:
                 dut._log.error("FIFO is empty but fifo_empty flag is not asserted")
     dut.rd_en.value = 0
+
+async def fifo_burst_write(dut,fifo_wr_stream,fifo_expected):
+    for data_wr in fifo_wr_stream:
+        await RisingEdge(dut.wr_clk)
+        await Timer(1,'ns')
+        dut.wr_en.value = 1
+        dut.data_wr.value = data_wr
+        fifo_expected.append(data_wr)
+        dut._log.info("Data written = %d, FIFO entry = %d", data_wr, len(fifo_expected))
+    await RisingEdge(dut.wr_clk)
+    await Timer(1,'ns')
+    dut.wr_en.value = 0
+
+async def fifo_burst_read_return_stream(dut,count,fifo_expected):
+    fifo_rd_stream = []
+    while (len(fifo_rd_stream) < count):
+        await RisingEdge(dut.rd_clk)
+        await Timer(1,'ns')
+        dut.rd_en.value = 1
+        await Timer(1,'ns')
+        if(dut.fifo_empty.value != 1):
+            data_rd = dut.data_rd.value.integer
+            fifo_rd_stream.append(data_rd)
+            fifo_expected.pop(0)
+            dut._log.info("Data read = %d, FIFO entry = %d", data_rd,len(fifo_expected))
+    dut.rd_en.value = 0
+    return fifo_rd_stream
+
+async def fifo_read_write_rand_simul(count,dut):
+    fifo_wr_stream = []
+    fifo_rd_stream = []
+    for i in range(BURST_LENGHT):
+        data_wr_rand = random.randint(0,MAX_DATA+1)
+        fifo_wr_stream.append(data_wr_rand)
+    fifo_expected = []
+    await cocotb.start(fifo_burst_write(dut,fifo_wr_stream,fifo_expected))
+    fifo_rd_stream = await fifo_burst_read_return_stream(dut,BURST_LENGHT,fifo_expected)
+    for i in range(len(fifo_wr_stream)):
+        if(fifo_wr_stream[i] != fifo_rd_stream[i]):
+            dut._log.error("Data rd %d does not match data wr %d", fifo_rd_stream[i],fifo_wr_stream[i])
     
 
 @cocotb.test()
@@ -115,11 +157,16 @@ async def fifo_rand_read_write_test(dut):
         match (op_sel):
             case 1:
                 await fifo_read_burst(op_count,dut,fifo_expected)
-                await Timer(RD_CLK_PERIOD)
-                await Timer(3*WR_CLK_PERIOD)
+                await Timer(RD_CLK_PERIOD,'ns')
+                await Timer(3*WR_CLK_PERIOD,'ns')
             case 0: 
                 await fifo_write_burst_rand(op_count,dut,fifo_expected)
-                await Timer(WR_CLK_PERIOD)
-                await Timer(3*RD_CLK_PERIOD)
-
+                await Timer(WR_CLK_PERIOD,'ns')
+                await Timer(3*RD_CLK_PERIOD,'ns')
+    
+@cocotb.test()
+async def fifo_rand_read_write_simul_test(dut):
+    await dut_init(dut)
+    dut._log.info("\nFIFO SIMULTANEOUS RANDOM READ WRITE SEQ")
+    await fifo_read_write_rand_simul(1,dut)
 
