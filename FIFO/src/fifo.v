@@ -13,7 +13,7 @@ module fifo #(
     input wire rd_en,
     output wire fifo_empty
 );
-    localparam CNTR_WIDTH = clogb2(DEPTH-1);
+    localparam CNTR_WIDTH = clogb2(DEPTH);
    
     reg [CNTR_WIDTH-1:0] rd_gray_pointer, rd_binary_pointer;
     wire [CNTR_WIDTH-1:0] rd_binary_pointer_next;
@@ -135,6 +135,7 @@ module fifo #(
     
     function integer clogb2;
         input integer value;
+        value = value - (value > 1);
         for(clogb2=0; value>0; value = value>>1)
              clogb2 = clogb2 + 1;
     endfunction
