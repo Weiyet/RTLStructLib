@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // 
-// Create Date: 04/18/2024 08:27:34 PM
+// Create Date: 05/05/2024 03:37:34 PM
 // Module Name: tb
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Description: 1. fifo_write_burst_rand 
@@ -61,7 +61,7 @@ task fifo_write_burst_rand (input integer count);
     for (i=0; i<count; i=i+1) begin
         @(posedge(wr_clk)) begin
             if(i < DEPTH & fifo_full) begin
-                $display("%0t ERROR: FIFO is not full but fifo_full flag is asserted", $realtime);
+                $error("%0t FIFO is not full but fifo_full flag is asserted", $realtime);
                 err_cnt = err_cnt + 1;
             end
             wr_en <= 1;
@@ -75,7 +75,7 @@ task fifo_write_burst_rand (input integer count);
                 if(fifo_full) 
                     $display("%0t FIFO is full, fifo_full flag is asserted correctly", $realtime);
                 else begin
-                    $display("%0t ERROR: FIFO is full but fifo_full flag is not asserted", $realtime);
+                    $error("%0t FIFO is full but fifo_full flag is not asserted", $realtime);
                     err_cnt = err_cnt + 1;
                 end
             end
@@ -95,16 +95,16 @@ task fifo_read_burst (input integer count);
         @(posedge(rd_clk))begin
             if ($size(fifo_expected) > 0) begin  
                 if(fifo_empty) begin
-                    $display("%0t ERROR: FIFO is not empty but fifo_empty flag is asserted", $realtime);
+                    $error("%0t FIFO is not empty but fifo_empty flag is asserted", $realtime);
                     err_cnt = err_cnt + 1;
                 end
                 data_rd_exp = fifo_expected.pop_front();
                 data_rd_act <= data_rd; 
                 #1; //to make sure data_rd_act capture data_rd signal.
                 if(data_rd_exp == data_rd_act) 
-                    $display("%0t Data read = %d, FIFO entry = %d", data_rd_act, $realtime, $size(fifo_expected));
+                    $display("%0t Data read = %d, FIFO entry = %d",$realtime, data_rd_act, $size(fifo_expected));
                 else begin
-                    $display("%0t EERROR: Data read mismatch, ACT = %d, EXP =%d, FIFO entry = %d", $realtime, data_rd_act, data_rd_exp, $size(fifo_expected));
+                    $error("%0t Data read mismatch, ACT = %d, EXP =%d, FIFO entry = %d", $realtime, data_rd_act, data_rd_exp, $size(fifo_expected));
                     err_cnt = err_cnt + 1;
                 end        
             end else begin // check FIFO EMPTY flag
@@ -112,7 +112,7 @@ task fifo_read_burst (input integer count);
                 if(fifo_empty) 
                     $display("%0t FIFO is empty, fifo_empty flag is asserted correctly", $realtime);
                 else begin
-                    $display("%0t ERROR: FIFO is empty but fifo_empty flag is not asserted", $realtime);
+                    $error("%0t FIFO is empty but fifo_empty flag is not asserted", $realtime);
                     err_cnt = err_cnt + 1;
                 end
             end
@@ -203,7 +203,7 @@ initial begin
     if ($value$plusargs("VCDFILE=%s",vcdfile))
         $dumpfile(vcdfile);
     if ($value$plusargs("VCDLEVEL=%d",vcdlevel))
-        $dumpvars(vcdlevel);
+        $dumpvars(vcdlevel,tb);
     rst = 1;
     #100 
     rst = 0;
