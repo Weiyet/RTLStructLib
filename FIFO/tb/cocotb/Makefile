@@ -6,7 +6,7 @@ PWD=$(shell pwd)
 
 #export PYTHONPATH := $(PWD)/../model:$(PYTHONPATH)
 
-VERILOG_SOURCES = $(PWD)/../../src/fifo.v
+VERILOG_SOURCES = $(PWD)/../../src/fifo.sv
 
 TOPLEVEL = fifo  # DUT Top
 MODULE   = tb  # top python file
