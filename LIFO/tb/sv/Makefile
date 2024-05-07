@@ -1,5 +1,5 @@
 
-DUT ?= ../../src/lifo.v
+DUT ?= ../../src/lifo.sv
 
 sim: lifo_sim 
 	./$< +VCDFILE=sim.vcd +VCDLEVEL=0 | tee sim.log
