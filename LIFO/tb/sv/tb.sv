@@ -16,8 +16,9 @@ module tb(
 );
 parameter DEPTH = 12; // DUT parameter
 parameter DATA_WIDTH = 8; // DUT paramter
-parameter CLK_PERIOD = 20; // TB wr_clk generator
+parameter CLK_PERIOD = 20; // TB clk generator
 parameter SIM_TIMEOUT = 100000; // TB simulation time out
+parameter TEST_WEIGHT = 1; //TB Test weight
 
 integer lifo_expected [$];
 integer i; 
@@ -115,27 +116,68 @@ task lifo_read(input integer count);
     rd_en = 0;
 endtask
 
+task lifo_simul_read_write(input integer wr_data_array[$]);
+    exp_data_wr = wr_data_array.pop_front();
+    @(posedge(clk))
+    rd_en <= 1;
+    wr_en <= 1;
+    data_wr <= exp_data_wr;    
+    
+    while($size(wr_data_array) != 0) begin
+        @(posedge(clk))
+        #1 
+        act_data_rd = data_rd;
+        if(act_data_rd == exp_data_wr) begin    
+            $display("%0t Simultaneous Data read/write = %d, FIFO entry = %d", $realtime, act_data_rd, $size(lifo_expected));
+        end
+        else begin
+            $error("%0t Simultaneous Data read/write, ACT = %d, EXP = %d, FIFO entry = %d", $realtime, act_data_rd, exp_data_wr, $size(lifo_expected));
+        end
+        #1
+        exp_data_wr = wr_data_array.pop_front();
+        data_wr <= exp_data_wr;
+    end
+    @(posedge(clk))
+    wr_en <= 0;
+    rd_en <= 0;
+    #1
+    act_data_rd = data_rd;
+    if(act_data_rd == exp_data_wr) begin    
+        $display("%0t Simultaneous Data read/write = %d, FIFO entry = %d", $realtime, act_data_rd, $size(lifo_expected));
+    end
+    else begin
+        $error("%0t Simultaneous Data read/write, ACT = %d, EXP = %d, FIFO entry = %d", $realtime, act_data_rd, exp_data_wr, $size(lifo_expected));
+    end
+endtask
+
 integer wr_data_array[$];
 integer k;
 
 task lifo_random_op_test(input integer count);
     i = count;
-    while (i >= 0) begin
-        op_sel = $urandom_range(0,1);
-        op_count = $urandom_range(1,3);
+    while (i > 0) begin
+        op_sel = $urandom_range(0,2);
+        op_count = $urandom_range(1,i);
         i = i - op_count;
         case(op_sel)
             0: begin // read
+                 $display("%0t LIFO Read %d times", $realtime, op_count);
                 lifo_read(op_count);
             end
             1: begin // write
+                 $display("%0t LIFO Write %d times", $realtime, op_count);
                 for(k=0 ; k < op_count; k = k+1) begin
                     wr_data_array.push_back($urandom_range(0,2**DATA_WIDTH-1));
                 end
                 lifo_write(wr_data_array);
             end
-//            3: begin // simultaneous read write
-//            end
+            2: begin // simultaneous read write
+                $display("%0t LIFO Simul Read Write %d times", $realtime, op_count);
+                for(k=0 ; k < op_count; k = k+1) begin
+                    wr_data_array.push_back($urandom_range(0,2**DATA_WIDTH-1));
+                end
+                lifo_simul_read_write(wr_data_array);
+            end
         endcase
     end
 endtask
@@ -143,18 +185,24 @@ endtask
 initial begin
     string vcdfile;
     int vcdlevel;
-//    int seed;
+    int seed;
+    int temp;
     if ($value$plusargs("VCDFILE=%s",vcdfile))
         $dumpfile(vcdfile);
     if ($value$plusargs("VCDLEVEL=%d",vcdlevel))
         $dumpvars(vcdlevel, tb);
-  //    if ($value$plusargs("VCDLEVEL=%d",seed))
-  //      $srandom(seed);
-    repeat(1) begin
+        $display("Seed number: %d",vcdlevel);
+    if ($value$plusargs("SEED=%d",seed)) begin
+        $display("Seed number: %d",seed);
+        temp = $urandom(seed);
+    end
+    
+    repeat(TEST_WEIGHT) begin
         rst = 1;
         #100 
         rst = 0;
         #100
+        lifo_expected = {};
         lifo_random_op_test(DEPTH);
         #1000;
     end
