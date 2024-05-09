@@ -191,7 +191,6 @@ initial begin
         $dumpfile(vcdfile);
     if ($value$plusargs("VCDLEVEL=%d",vcdlevel))
         $dumpvars(vcdlevel, tb);
-        $display("Seed number: %d",vcdlevel);
     if ($value$plusargs("SEED=%d",seed)) begin
         $display("Seed number: %d",seed);
         temp = $urandom(seed);
