@@ -34,6 +34,9 @@ wire [DATA_WIDTH-1:0] data_rd;
 wire lifo_empty;
 wire lifo_full;
 
+// for xilinx gate sim
+glbl glbl();
+
 lifo #(
 .DEPTH(DEPTH), 
 .DATA_WIDTH(DATA_WIDTH)) DUT (
@@ -191,6 +194,7 @@ initial begin
         $dumpfile(vcdfile);
     if ($value$plusargs("VCDLEVEL=%d",vcdlevel))
         $dumpvars(vcdlevel, tb);
+        $display("Seed number: %d",vcdlevel);
     if ($value$plusargs("SEED=%d",seed)) begin
         $display("Seed number: %d",seed);
         temp = $urandom(seed);
