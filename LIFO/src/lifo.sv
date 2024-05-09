@@ -11,7 +11,7 @@ module lifo #(
     input wire rd_en,
     output wire lifo_empty
 );
-    localparam CNTR_WIDTH = clogb2(DEPTH);
+    localparam CNTR_WIDTH = $clog2(DEPTH);
    
     reg [CNTR_WIDTH-1:0] pointer;
     reg [DATA_WIDTH-1:0] lifo_stored [DEPTH-1:0];
@@ -74,11 +74,4 @@ module lifo #(
     // if lifo_full : data_rd <= (lifo_stored[pointer-1]) else data_rd <= lifo_stored[pointer]
     //              : pointer <= pointer - 2             else pointer <= pointer <= pointer -1
     
-    function integer clogb2;
-        input integer value;
-        value = value - (value > 1);
-        for(clogb2=0; value>0; value = value>>1)
-             clogb2 = clogb2 + 1;
-    endfunction
-
 endmodule
