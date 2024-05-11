@@ -2,6 +2,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 // 
 // Create Date: 05/05/2024 03:37:34 PM
+// Last Update Date: 05/11/2024 10:37:12 AM
 // Module Name: tb
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Description: 1. fifo_write_burst_rand 
@@ -18,6 +19,7 @@ module tb(
 parameter DEPTH = 12; // DUT parameter
 parameter DATA_WIDTH = 8; // DUT paramter
 parameter ASYNC = 1; // DUT parameter
+parameter RD_BUFFER = 1; // DUT parameter
 parameter TEST_WEIGHT = 1; // TB multiplier for stimulus injected
 parameter WR_CLK_PERIOD = 20; // TB wr_clk generator
 parameter RD_CLK_PERIOD = 32; // TB rd_clk generator
@@ -40,14 +42,15 @@ wire fifo_full;
 fifo #(
 .DEPTH(DEPTH), 
 .DATA_WIDTH(DATA_WIDTH), 
-.ASYNC(ASYNC)) DUT (
+.ASYNC(ASYNC),
+.RD_BUFFER(RD_BUFFER)) DUT (
     /*input wire*/ .rd_clk(rd_clk),
     /*input wire*/ .wr_clk(wr_clk),
     /*input wire*/ .rst(rst),
     /*input wire [DATA_WIDTH-1:0]*/ .data_wr(data_wr),
     /*input wire*/ .wr_en(wr_en),
     /*output wire*/ .fifo_full(fifo_full),
-    /*output wire [DATA_WIDTH-1:0]*/ .data_rd(data_rd),
+    /*output logic [DATA_WIDTH-1:0]*/ .data_rd(data_rd),
     /*input wire*/ .rd_en(rd_en),
     /*output wire*/ .fifo_empty(fifo_empty));
 
@@ -60,7 +63,7 @@ integer data_wr_rand = 0;
 task fifo_write_burst_rand (input integer count);
     for (i=0; i<count; i=i+1) begin
         @(posedge(wr_clk)) begin
-            if(i < DEPTH & fifo_full) begin
+            if($size(fifo_expected) < DEPTH & fifo_full) begin
                 $error("%0t FIFO is not full but fifo_full flag is asserted", $realtime);
                 err_cnt = err_cnt + 1;
             end
@@ -98,6 +101,9 @@ task fifo_read_burst (input integer count);
                     $error("%0t FIFO is not empty but fifo_empty flag is asserted", $realtime);
                     err_cnt = err_cnt + 1;
                 end
+                if (RD_BUFFER == 1) begin
+                  #1;
+                end
                 data_rd_exp = fifo_expected.pop_front();
                 data_rd_act <= data_rd; 
                 #1; //to make sure data_rd_act capture data_rd signal.
@@ -129,7 +135,7 @@ bit op_sel = 0;
 task fifo_burst_rand(int count);
     j = count;
     while(j >= 0) begin
-      op_sel = $random(); 
+      op_sel = $urandom(); 
       op_count = $urandom_range(1,j); // to have continuous request
       j = j - op_count;
       case(op_sel) 
@@ -176,6 +182,9 @@ task fifo_read_write_rand_simul();
            rd_en = 1;
            while($size(fifo_wr_stream) != DEPTH)begin
               @(posedge(rd_clk))
+              if(RD_BUFFER) begin
+                  #1;
+              end
               if(!fifo_empty) begin
                  data_rd_act <= data_rd;
                  fifo_rd_stream.push_back(data_rd_act);
@@ -198,12 +207,17 @@ endtask
 initial begin
     string vcdfile;
     int vcdlevel;
+    int seed;
 
     rst = 1'b1;
     if ($value$plusargs("VCDFILE=%s",vcdfile))
         $dumpfile(vcdfile);
     if ($value$plusargs("VCDLEVEL=%d",vcdlevel))
         $dumpvars(vcdlevel,tb);
+    if ($value$plusargs("SEED=%d",seed)) begin
+        $urandom(seed);
+        $display("Seed = %d",seed);
+    end
     rst = 1;
     #100 
     rst = 0;
