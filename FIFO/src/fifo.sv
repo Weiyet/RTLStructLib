@@ -2,7 +2,7 @@ module fifo #(
     parameter DEPTH = 12,
     parameter DATA_WIDTH = 8,
     parameter ASYNC = 1,
-    parameter RD_BUFFER = 0
+    parameter RD_BUFFER = 1
 )(
     input wire rd_clk,
     input wire wr_clk,
