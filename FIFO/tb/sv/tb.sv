@@ -39,6 +39,11 @@ wire [DATA_WIDTH-1:0] data_rd;
 wire fifo_empty;
 wire fifo_full;
 
+
+`ifdef XILINX_GLS
+    glbl glbl (); // for Xilinx GLS
+`endif
+
 fifo #(
 .DEPTH(DEPTH), 
 .DATA_WIDTH(DATA_WIDTH), 
