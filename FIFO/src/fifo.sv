@@ -1,7 +1,8 @@
 module fifo #(
     parameter DEPTH = 12,
     parameter DATA_WIDTH = 8,
-    parameter ASYNC = 1
+    parameter ASYNC = 1,
+    parameter RD_BUFFER = 0
 )(
     input wire rd_clk,
     input wire wr_clk,
@@ -9,7 +10,7 @@ module fifo #(
     input wire [DATA_WIDTH-1:0] data_wr,
     input wire wr_en,
     output reg fifo_full,
-    output wire [DATA_WIDTH-1:0] data_rd,
+    output logic [DATA_WIDTH-1:0] data_rd,
     input wire rd_en,
     output wire fifo_empty
 );
@@ -94,7 +95,18 @@ module fifo #(
         end
     end
     
-    assign data_rd = (rd_en & !fifo_empty) ? fifo_stored[rd_binary_pointer] : {DATA_WIDTH{1'b0}}; 
+    generate 
+        if(RD_BUFFER == 1) begin 
+            always @ (posedge rd_clk, posedge rst) begin
+                if(rst) 
+                    data_rd <= {DATA_WIDTH{1'b0}}; 
+                else if (rd_en & !fifo_empty) 
+                    data_rd <= fifo_stored[rd_binary_pointer];
+            end
+        end else begin 
+            assign data_rd = (rd_en & !fifo_empty) ? fifo_stored[rd_binary_pointer] : {DATA_WIDTH{1'b0}}; 
+        end
+    endgenerate
 
     generate
         if(ASYNC == 1) begin
