@@ -213,6 +213,7 @@ initial begin
     string vcdfile;
     int vcdlevel;
     int seed;
+    int temp;
 
     rst = 1'b1;
     if ($value$plusargs("VCDFILE=%s",vcdfile))
@@ -220,7 +221,7 @@ initial begin
     if ($value$plusargs("VCDLEVEL=%d",vcdlevel))
         $dumpvars(vcdlevel,tb);
     if ($value$plusargs("SEED=%d",seed)) begin
-        $urandom(seed);
+        temp = $urandom(seed);
         $display("Seed = %d",seed);
     end
     rst = 1;
