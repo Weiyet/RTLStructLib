@@ -24,4 +24,19 @@ COMPILE_ARGS += -Pfifo.RD_BUFFER=1 # DUT paramter #"-p" iverilog command flags
 #Set RANDOM_SEED number
 #PLUSARGS = +seed=1
 
+COCOTB_HDL_TIMEUNIT = 1ns
+COCOTB_HDL_TIMEPRECISION = 1ps
+
+ifeq ($(SIM), icarus) 
+   $(shell echo 'module iverilog_dump();' > iverilog_dump.v)
+   $(shell echo 'initial begin' >> iverilog_dump.v)
+   $(shell echo '    $$dumpfile("$(TOPLEVEL).vcd");' >> iverilog_dump.v)
+   $(shell echo '    $$dumpvars(0, $(TOPLEVEL));' >> iverilog_dump.v)
+   $(shell echo '    $$dumpvars(0, $(TOPLEVEL));' >> iverilog_dump.v)
+   $(shell echo 'end' >> iverilog_dump.v)
+   $(shell echo 'endmodule' >> iverilog_dump.v)
+   VERILOG_SOURCES += $(PWD)/iverilog_dump.v
+   COMPILE_ARGS += -s iverilog_dump  
+endif
+
 include $(shell cocotb-config --makefiles)/Makefile.sim
