@@ -1,38 +1,36 @@
-
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 06/25/2024 08:46:52 PM
-// Module Name: linked_list
-// Description: linked_list
-// 
-// 
-// Revision:
-// Revision 0.01 - File Created
+// Module Name: singly_linked_list
+// Description: Supported Operation 
+//             1. Read(addr_in) 
+//             2. Delete_value(data_in)
+//             3. Push_back(data_in) 
+//             4. Push_front(data_in)
 // Additional Comments: 
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module linked_list #(
+module singly_linked_list #(
     parameter DATA_WIDTH = 8, // Data Width
     parameter MAX_NODE = 8  // Maximum number of nodes stored
     )(
         input rst,
-        input sync_rst,
         input clk,
-        input data_in, 
-        input addr_in,
-        input [1:0] op, // 0: Read(addr_in); 1: Delete_Value(data_in); 2: Push_Back(data_in); 3: Push_front(data_in)
+        input [DATA_WIDTH-1:0] data_in, 
+        input [ADDR_WIDTH-1:0] addr_in,
+        input [1:0] op, // 0: Read(addr_in); 1: Delete_value(data_in); 2: Push_back(data_in); 3: Push_front(data_in)
         input op_start, 
         output reg [DATA_WIDTH-1:0] data_out,
         output reg op_done,
-        output wire next_node_addr, // Addr of next node
+        output wire [ADDR_WIDTH-1:0] next_node_addr, // Addr of next node
         // status 
-        output reg head, // Addr of head
-        output reg tail, // Addr of tail
+        output reg [ADDR_WIDTH-1:0] head, // Addr of head
+        output reg [ADDR_WIDTH-1:0] tail, // Addr of tail
         output wire full, 
         output wire empty,
-        output reg fault, // Invalid Errors 
+        output reg fault // Invalid Errors 
     );
 
     localparam ADDR_WIDTH = $clog2(MAX_NODE+1); // Reserve {ADDR_WIDTH(1'b1)} as NULL/INVALID ADDR.
@@ -63,14 +61,15 @@ module linked_list #(
     reg [ADDR_WIDTH-1:0] next_node_addr_in;
     
     localparam IDLE = 3'b000;
-    localparam EXECUTE = 3'b010;
+    localparam EXECUTE = 3'b001;
     localparam FIND_VALUE = 3'b011;
-    localparam FAULT = 3'b001;
+    localparam CHECK_VALUE = 3'b100;
+    localparam FAULT = 3'b101;
 
-    assign op_is_read = op == 2'd0 & start;
-    assign op_is_delete = op == 2'd1 & start;
-    assign op_is_push_back = op == 2'd2 & start; 
-    assign op_is_push_front = op == 2'd3 & start;
+    assign op_is_read = op == 2'd0 & op_start;
+    assign op_is_delete = op == 2'd1 & op_start;
+    assign op_is_push_back = op == 2'd2 & op_start; 
+    assign op_is_push_front = op == 2'd3 & op_start;
 
     always @ (posedge clk or posedge rst) begin
         if (rst) begin
@@ -188,9 +187,11 @@ module linked_list #(
     
     always @ (posedge clk, posedge rst) begin
         if (rst) begin
-            pre_ptr[1:0] <= {2*ADDR_WIDTH{1'b0}};
+            pre_ptr[0] <= {ADDR_WIDTH{1'b0}};
+            pre_ptr[1] <= {ADDR_WIDTH{1'b0}};
         end else if (rd_req | wr_req) begin
-            pre_ptr[1:0] <= {pre_ptr[0],target_idx};
+            pre_ptr[0] <= target_idx;
+            pre_ptr[1] <= pre_ptr[0];
         end
     end
     
@@ -211,7 +212,7 @@ module linked_list #(
     always @ (posedge clk or posedge rst) begin
         if (rst) begin
             head <= {ADDR_WIDTH{1'b0}};
-        end else if (op_is_push_front) begin
+        end else if (op_is_push_front & !full) begin
             head <= target_idx;
         end    
     end
@@ -219,7 +220,7 @@ module linked_list #(
     always @ (posedge clk or posedge rst) begin
         if (rst) begin
             tail <= {ADDR_WIDTH{1'b0}};
-        end else if (op_is_push_back) begin
+        end else if (op_is_push_back & !full) begin
             tail <= target_idx;
         end    
     end
