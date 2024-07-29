@@ -17,6 +17,7 @@ module tb(
     // TB parameter
     localparam TB_CLK_PERIOD = 25;
     localparam ADDR_WIDTH = $clog2(DUT_MAX_NODE+1); // Reserve {ADDR_WIDTH(1'b1)} as NULL/INVALID ADDR  
+    localparam MAX_DATA = 2**DUT_DATA_WIDTH - 1;
     localparam TB_TEST_WEIGHT = 1;
     localparam TB_SIM_TIMEOUT = 500000;
 
@@ -62,16 +63,98 @@ wire fault;
     );
     
 always #(TB_CLK_PERIOD/2) clk = ~clk; 
+
+integer linked_list_exp[$];    
+integer data_wr[$];
+integer i = 0;
+
+task push_back(input integer count); 
+begin
+    while(i<count) begin  
+        @(posedge (clk));
+        #1 
+        if(op_done) begin
+            op = OP_Push_back;
+            data_in = $urandom_range(0,MAX_DATA);
+            linked_list_exp.push_back(data_in);
+            op_start = 1;
+            i = i + 1;
+        end
+    end
+    @(posedge (clk))
+    #1 op_start = 0;
+    
+end
+endtask    
+
+task push_front(input integer count); 
+begin
+    i = 0;
+    while (i<count) begin  
+        @(posedge (clk));
+        #1 
+        if(op_done) begin
+            op = OP_Push_front;  
+            data_in = $urandom_range(0,MAX_DATA);
+            linked_list_exp.push_front(data_in);
+            op_start = 1;
+            i = i + 1;
+        end
+    end
+    @(posedge (clk))
+    #1 op_start = 0;
+end
+endtask  
+
+task read(input integer count); 
+begin
+    i = 0;
+    @(posedge (clk));
+    #1 
+    if(op_done) begin
+        op = OP_Read;  
+        op_start = 1;
+        addr_in = head;
+        i = i + 1;
+    end 
+    while (i<count) begin  
+        @(posedge (clk));
+        #1 
+        if(op_done) begin
+            op = OP_Read;  
+            op_start = 1;
+            addr_in = next_node_addr;
+            i = i + 1;
+        end
+    end
+    @(posedge (clk))
+    #1 op_start = 0;
+end
+endtask  
+
+task delete_value(input integer value); 
+begin
+    i = 0; 
+    @(posedge (clk));
+    #1 
+    op = OP_Delete_value;  
+    data_in = value;
+    wait (op_done)
+    #1 op_start = 0;
+end
+endtask  
     
 initial begin
     rst = 1'b1;
     #100
     rst = 1'b0;
-    data_in = 'd12;
-    addr_in = 'd10;
-    op = OP_Push_back; 
-    op_start = 1'b1;
+    push_back(3);
+    #100
+    push_front(3);
     #2000
+    read(3);
+    #2000
+    delete_value(linked_list_exp[2]);
     $stop; 
 end
 
@@ -81,4 +164,3 @@ $stop;
 end
 
 endmodule
-
