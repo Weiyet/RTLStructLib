@@ -4,10 +4,10 @@
 // Module Name: singly_linked_list
 // Description: Supported Operation 
 //             1. Read(addr_in) 
-//             2. Delete_value(data_in)
-//             3. Push_back(data_in) 
-//             4. Push_front(data_in)
-// Additional Comments: 
+//             2. Insert(addr_in, data_in)
+//             3. Delete_Value(data_in)
+//             4. Delete_Addr(addr_in) 
+// Additional Comments:  TBD // Curr address ?
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
@@ -22,7 +22,7 @@ module singly_linked_list #(
         input [ADDR_WIDTH-1:0] addr_in,
         input [1:0] op, // 0: Read(addr_in); 1: Delete_value(data_in); 2: Push_back(data_in); 3: Push_front(data_in)
         input op_start, 
-        output reg [DATA_WIDTH-1:0] data_out,
+        output wire [DATA_WIDTH-1:0] data_out,
         output reg op_done,
         output wire [ADDR_WIDTH-1:0] next_node_addr, // Addr of next node
         // status 
@@ -30,10 +30,11 @@ module singly_linked_list #(
         output reg [ADDR_WIDTH-1:0] tail, // Addr of tail
         output wire full, 
         output wire empty,
-        output reg fault // Invalid Errors 
+        output wire fault // Invalid Errors 
     );
 
     localparam ADDR_WIDTH = $clog2(MAX_NODE+1); // Reserve {ADDR_WIDTH(1'b1)} as NULL/INVALID ADDR.
+    localparam ADDR_NULL = (MAX_NODE+1);
 
     typedef struct {  
         reg [DATA_WIDTH-1:0] data; // Dual port RAM
@@ -44,16 +45,19 @@ module singly_linked_list #(
     node_st node [0:MAX_NODE-1];
     wire [MAX_NODE-1:0] valid_bits;
     wire op_is_read; 
-    wire op_is_push_back;
-    wire op_is_delete;
-    wire op_is_push_front;
-    reg [ADDR_WIDTH-1:0] pre_ptr [0:1]; 
+    wire op_is_insert;
+    wire op_is_delete_by_addr;
+    wire op_is_delete_by_value;
+    reg [ADDR_WIDTH-1:0] cur_ptr; 
+    reg [ADDR_WIDTH-1:0] pre_ptr; 
     reg [2:0] state;
     reg [2:0] next_state;
     reg wr_req;
     reg rd_req;
     reg valid_rd_buf;
     reg valid_wr; 
+    reg fault_trg;
+    reg fault_trg_lth;
     reg [ADDR_WIDTH-1:0] next_addr_rd_buf;
     reg [DATA_WIDTH-1:0] data_rd_buf;
     reg [ADDR_WIDTH-1:0] target_idx; 
@@ -61,29 +65,30 @@ module singly_linked_list #(
     reg [ADDR_WIDTH-1:0] next_node_addr_in;
     
     localparam IDLE = 3'b000;
-    localparam EXECUTE = 3'b001;
-    localparam FIND_VALUE = 3'b011;
-    localparam CHECK_VALUE = 3'b100;
-    localparam FAULT = 3'b101;
+    localparam FIND_ADDR = 3'b001;
+    localparam FIND_VALUE = 3'b010;
+    localparam INSERT_STG1 = 3'b011;
+    localparam DELETE_STG1 = 3'b110;
+    localparam EXECUTE = 3'b100;
 
     assign op_is_read = op == 2'd0 & op_start;
-    assign op_is_delete = op == 2'd1 & op_start;
-    assign op_is_push_back = op == 2'd2 & op_start; 
-    assign op_is_push_front = op == 2'd3 & op_start;
+    assign op_is_insert = op == 2'd1 & op_start; 
+    assign op_is_delete_by_value = op == 2'd2 & op_start; 
+    assign op_is_delete_by_addr = op == 2'd3 & op_start;
 
     always @ (posedge clk or posedge rst) begin
         if (rst) begin
             for (int i = 0; i < MAX_NODE; i = i+1) begin
                 node[i].data <= {DATA_WIDTH{1'b0}};
                 node[i].valid <= 1'b0;
-                node[i].next_node_addr <= {ADDR_WIDTH{1'b0}};
+                node[i].next_node_addr <= ADDR_NULL;
             end
         end else if (wr_req) begin  
-            node[target_idx].data <= data_in;
-            node[target_idx].valid <= 1'b1;
-            if (empty) begin
-                node[next_node_addr_idx].next_node_addr <= next_node_addr_in;  // FIXME
+            if (state != INSERT_STG1 & state != DELETE_STG1) begin 
+                node[target_idx].data <= data_in; 
+                node[target_idx].valid <= valid_wr;
             end
+            node[next_node_addr_idx].next_node_addr <= next_node_addr_in;
         end 
     end
 
@@ -95,45 +100,127 @@ module singly_linked_list #(
         end
     end
     
-    // //op_done
+    // op_done
     always @ (*) begin
         op_done <= 1'b0;
         rd_req <= 1'b0;
         wr_req <= 1'b0;
         target_idx <= {ADDR_WIDTH{1'b0}};
         next_node_addr_idx <= {ADDR_WIDTH{1'b0}};
-        fault <= 1'b0;
+        fault_trg <= 1'b0;
         case(state)
             IDLE: begin
-                if (op_is_push_back) begin  //WR TAIL.next addr
-                   if(full) begin
-                       next_state <= FAULT;
-                   end else begin
-                       wr_req <= 1'b1;
-                       target_idx <= find_next_ptr(valid_bits);
-                       valid_wr <= 1'b1;
-                       next_node_addr_idx <= tail;
-                       next_node_addr_in <= find_next_ptr(valid_bits) ;
-                       next_state <= EXECUTE;
-                   end
-                end else if (op_is_push_front) begin
-                   if(full) begin
-                       next_state <= FAULT;
-                   end else begin
-                       wr_req <= 1'b1;
-                       target_idx <= find_next_ptr(valid_bits);
-                       valid_wr <= 1'b1;
-                       next_node_addr_idx <= find_next_ptr(valid_bits);
-                       next_node_addr_in <= head;
-                       next_state <= EXECUTE;
-                   end
+                if (op_is_insert) begin
+                    if (full) begin
+                        fault_trg <= 1'b1;
+                        next_state <= EXECUTE; 
+                    end else if (addr_in == head) begin // push_front
+                        // Add new node 
+                        // Next node addr of new node point to head
+                        wr_req <= 1'b1;
+                        target_idx <= find_next_ptr(valid_bits);
+                        valid_wr <= 1'b1;
+                        next_node_addr_idx <= find_next_ptr(valid_bits);
+                        next_node_addr_in <= head;
+                        next_state <= EXECUTE;
+                    end else if (addr_in == ADDR_NULL) begin // push_back
+                        // Add new node 
+                        // Next node addr of tail point to new node
+                        wr_req <= 1'b1;
+                        target_idx <= find_next_ptr(valid_bits);
+                        valid_wr <= 1'b1;
+                        next_node_addr_idx <= tail;
+                        next_node_addr_in <= find_next_ptr(valid_bits) ;
+                        next_state <= EXECUTE;                        
+                    end else begin
+                        rd_req <= 1'b1;
+                        target_idx <= head;
+                        next_state <= FIND_ADDR;
+                    end
                 end else if (op_is_read) begin
                    rd_req <= 1'b1;
                    target_idx <= addr_in;
                    next_state <= EXECUTE;
-                end else if (op_is_delete) begin 
+                end else if (op_is_delete_by_value) begin 
+                   if(empty) begin
+                      fault_trg <= 1'b1;
+                      next_state <= EXECUTE; 
+                   end else begin
+                      rd_req <= 1'b1;
+                      target_idx <= head;
+                      next_state <= FIND_VALUE;
+                   end
+                end else if (op_is_delete_by_addr) begin 
+                   if(empty) begin
+                      fault_trg <= 1'b1;
+                      next_state <= EXECUTE; 
+                   end else begin
+                      rd_req <= 1'b1;
+                      target_idx <= head;
+                      next_state <= FIND_ADDR;
+                   end
+                end else begin
+                   next_state <= IDLE;
+                end
+            end
+            FIND_ADDR: begin // to get pre pos (pre_ptr)
+                if (!valid_rd_buf ) begin
+                    fault_trg <= 1'b1; 
+                    next_state <= EXECUTE; 
+                end else if(cur_ptr == addr_in) begin
+                    if(op_is_delete_by_addr) begin
+                        // update curr pos to invalid
+                        wr_req <= 1'b1;
+                        target_idx <= cur_ptr;
+                        valid_wr <= 1'b0;
+                        // update next_node_addr of pre pos to next pos
+                        next_node_addr_idx <= pre_ptr; 
+                        next_node_addr_in <= find_next_ptr(valid_bits);
+                        next_state <= DELETE_STG1; 
+                    end else if (op_is_insert) begin
+                        // insert new pos 
+                        wr_req <= 1'b1;
+                        target_idx <= find_next_ptr(valid_bits);
+                        valid_wr <= 1'b1;
+                        // update next_node_addr of new pos to next pos
+                        next_node_addr_idx <= find_next_ptr(valid_bits);
+                        next_node_addr_in <= next_addr_rd_buf;
+                        next_state <= INSERT_STG1;                      
+                    end
+                end else begin
                    rd_req <= 1'b1;
-                   target_idx <= head;
+                   target_idx <= next_addr_rd_buf;
+                   next_state <= FIND_VALUE;     
+                end
+            end
+            INSERT_STG1: begin
+                wr_req <= 1'b1; 
+                next_node_addr_idx <= find_next_ptr(valid_bits);
+                next_node_addr_in <= next_addr_rd_buf;
+                next_state <= EXECUTE; 
+            end
+            DELETE_STG1: begin
+                wr_req <= 1'b1; 
+                next_node_addr_idx <= cur_ptr;
+                next_node_addr_in <= ADDR_NULL;
+                next_state <= EXECUTE; 
+            end        
+            FIND_VALUE: begin
+                if (!valid_rd_buf) begin
+                    fault_trg <= 1'b1; 
+                    next_state <= EXECUTE; 
+                end else if(data_rd_buf == data_in) begin  //FIXME case for if cur_ptr is head; if next is NULL pointer return FAULT.
+                        // update curr pos to invalid
+                        wr_req <= 1'b1;
+                        target_idx <= cur_ptr;
+                        valid_wr <= 1'b0;
+                        // update next_node_addr of pre pos to next pos
+                        next_node_addr_idx <= pre_ptr; 
+                        next_node_addr_in <= next_addr_rd_buf;
+                        next_state <= DELETE_STG1;    
+                end else begin
+                   rd_req <= 1'b1;
+                   target_idx <= next_addr_rd_buf;
                    next_state <= FIND_VALUE;
                 end
             end
@@ -141,44 +228,29 @@ module singly_linked_list #(
                 op_done <= 1'b1;
                 next_state <= IDLE;
             end 
-            FIND_VALUE: begin
-                if(data_rd_buf == data_in) begin  //FIXME case for if pre_ptr[0] is head; if next is NULL pointer return FAULT.
-                    wr_req <= 1'b1;
-                    target_idx <= pre_ptr[0];
-                    valid_wr <= 1'b0;
-                    next_node_addr_idx <= pre_ptr[1]; 
-                    next_node_addr_in <= next_addr_rd_buf;
-                    next_state <= EXECUTE;
-                end else begin
-                   rd_req <= 1'b1;
-                   target_idx <= next_addr_rd_buf;
-                   next_state <= CHECK_VALUE;
-                end
-            end
-            FAULT: begin
-                fault <= 1'b1;
-                op_done <= 1'b1;
-                next_state <= IDLE;
-            end
        endcase
     end
 
-    always @ (posedge clk or posedge rst) begin
-        if (rst) begin
-           data_out <= {DATA_WIDTH{1'b0}};
-        end else if (rd_req) begin
-           data_out <= node[target_idx].data; 
-        end
-    end
+    assign data_out = data_rd_buf; 
 
     always @ (posedge clk, posedge rst) begin
         if (rst) begin
-            //pre_ptr <= {ADDR_WIDTH{1'b0}};
+            fault_trg_lth <= 1'b0;
+        end else if (fault_trg) begin
+            fault_trg_lth <= 1'b1;
+        end else if (op_done) begin
+            fault_trg_lth <= 1'b0;
+        end
+    end
+
+    assign fault = (op_done & op_is_read & !valid_rd_buf) | fault_trg_lth;
+
+    always @ (posedge clk, posedge rst) begin
+        if (rst) begin
             data_rd_buf <= {DATA_WIDTH{1'b0}};
             valid_rd_buf <= 1'b0;
             next_addr_rd_buf= {ADDR_WIDTH{1'b0}};
         end else if (rd_req) begin
-            //pre_ptr <= target_idx;
             data_rd_buf <=  node[target_idx].data;
             valid_rd_buf <= node[target_idx].valid;
             next_addr_rd_buf <= node[target_idx].next_node_addr;
@@ -187,15 +259,18 @@ module singly_linked_list #(
     
     always @ (posedge clk, posedge rst) begin
         if (rst) begin
-            pre_ptr[0] <= {ADDR_WIDTH{1'b0}};
-            pre_ptr[1] <= {ADDR_WIDTH{1'b0}};
-        end else if (rd_req | wr_req) begin
-            pre_ptr[0] <= target_idx;
-            pre_ptr[1] <= pre_ptr[0];
+            cur_ptr <= ADDR_NULL;
+            pre_ptr <= ADDR_NULL;
+        end else if(next_state == IDLE) begin
+            cur_ptr <= ADDR_NULL;
+            pre_ptr <= ADDR_NULL;
+        end
+        else if (rd_req | wr_req) begin
+            cur_ptr <= target_idx;
+            pre_ptr <= cur_ptr;
         end
     end
     
-    assign valid = valid_rd_buf;
     assign next_node_addr = next_addr_rd_buf;
 
     genvar j;
@@ -211,25 +286,33 @@ module singly_linked_list #(
     
     always @ (posedge clk or posedge rst) begin
         if (rst) begin
-            head <= {ADDR_WIDTH{1'b0}};
-        end else if (op_is_push_front & !full) begin
-            head <= target_idx;
-        end    
-    end
+            head <= ADDR_NULL;
+        end else if (op_is_insert & (addr_in == head) & (next_state == EXECUTE) & !fault_trg) begin //INVALID addr
+            head <= find_next_ptr(valid_bits);
+        end else if (op_is_delete_by_addr & (addr_in == head) & (next_state == EXECUTE) & !fault_trg) begin
+            head <= next_addr_rd_buf;
+        end else if (op_is_delete_by_value & (cur_ptr == head) & (next_state == EXECUTE) & !fault_trg) begin
+            head <= next_addr_rd_buf;
+        end
+    end // FIXME when Insert to head . // FIXME when delete to  //FIXME when fault happens
     
     always @ (posedge clk or posedge rst) begin
         if (rst) begin
-            tail <= {ADDR_WIDTH{1'b0}};
-        end else if (op_is_push_back & !full) begin
-            tail <= target_idx;
-        end    
+            tail <= ADDR_NULL;
+        end else if (op_is_insert & (addr_in == ADDR_NULL) & (next_state == EXECUTE) & !fault_trg) begin
+            tail <= find_next_ptr(valid_bits);
+        end else if (op_is_delete_by_addr & (addr_in == tail) & (next_state == EXECUTE) & !fault_trg) begin
+            tail <= next_addr_rd_buf;
+        end else if (op_is_delete_by_value & (cur_ptr == tail) & (next_state == EXECUTE) & !fault_trg) begin
+            tail <= next_addr_rd_buf;
+        end
     end
     
     function bit [ADDR_WIDTH-1:0] find_next_ptr(input bit [MAX_NODE-1:0] valid_bits);
         int done;
         done = 0;
         find_next_ptr = 0;
-        for (int i = 1; i < MAX_NODE ; i = i+1) begin
+        for (int i = 0; i < MAX_NODE ; i = i+1) begin
             if(valid_bits[i] == 0 & done == 0) begin
                 find_next_ptr = i; 
                 done = 1;
