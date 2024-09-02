@@ -2,8 +2,11 @@
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 07/11/2024 10:23:52 PM
 // Module Name: tb
-// Description:  
-// 
+// Description: Supported Operation 
+//             1. Read_n(Count) 
+//             2. Delete_Value(data_in)
+//             3. Delete_Addr(addr_in) 
+//             4. Insert(addr_in, data_in)
 // Additional Comments:
 // 
 //////////////////////////////////////////////////////////////////////////////////
@@ -21,11 +24,12 @@ module tb(
     localparam TB_TEST_WEIGHT = 1;
     localparam TB_SIM_TIMEOUT = 500000;
 
+localparam ADDR_NULL = (DUT_MAX_NODE+1);
 
 localparam OP_Read = 2'b00;
-localparam OP_Delete_value = 2'b01;
-localparam OP_Push_back = 2'b10;
-localparam OP_Push_front = 2'b11;
+localparam OP_Insert = 2'b01;
+localparam OP_Delete_value = 2'b10;
+localparam OP_Delete_addr = 2'b11;
 
 // input 
 reg clk = 0;
@@ -68,55 +72,15 @@ integer linked_list_exp[$];
 integer data_wr[$];
 integer i = 0;
 
-task push_back(input integer count); 
-begin
-    while(i<count) begin  
-        @(posedge (clk));
-        #1 
-        if(op_done) begin
-            op = OP_Push_back;
-            data_in = $urandom_range(0,MAX_DATA);
-            linked_list_exp.push_back(data_in);
-            op_start = 1;
-            i = i + 1;
-        end
-    end
-    @(posedge (clk))
-    #1 op_start = 0;
-    
-end
-endtask    
-
-task push_front(input integer count); 
-begin
-    i = 0;
-    while (i<count) begin  
-        @(posedge (clk));
-        #1 
-        if(op_done) begin
-            op = OP_Push_front;  
-            data_in = $urandom_range(0,MAX_DATA);
-            linked_list_exp.push_front(data_in);
-            op_start = 1;
-            i = i + 1;
-        end
-    end
-    @(posedge (clk))
-    #1 op_start = 0;
-end
-endtask  
-
-task read(input integer count); 
+task read_n(input integer count); 
 begin
     i = 0;
     @(posedge (clk));
     #1 
-    if(op_done) begin
-        op = OP_Read;  
-        op_start = 1;
-        addr_in = head;
-        i = i + 1;
-    end 
+    op = OP_Read;  
+    op_start = 1;
+    addr_in = head;
+    i = i + 1;
     while (i<count) begin  
         @(posedge (clk));
         #1 
@@ -128,7 +92,8 @@ begin
         end
     end
     @(posedge (clk))
-    #1 op_start = 0;
+    #1 
+    op_start = 0;
 end
 endtask  
 
@@ -139,22 +104,70 @@ begin
     #1 
     op = OP_Delete_value;  
     data_in = value;
+    op_start = 1;
     wait (op_done)
-    #1 op_start = 0;
+    #1 
+    op_start = 0;
 end
 endtask  
     
+task delete_addr(input integer addr); 
+begin
+    i = 0; 
+    @(posedge (clk));
+    #1 
+    op = OP_Delete_addr;  
+    addr_in = addr; 
+    op_start = 1;
+    wait (op_done)
+    #1 
+    op_start = 0;
+end
+endtask  
+
+task insert(input integer addr, input integer value); 
+begin 
+    i = 0; 
+    @(posedge (clk));
+    #1 
+    op = OP_Insert;  
+    addr_in = addr;
+    data_in = value;
+    op_start = 1;  
+    wait (op_done)
+    #1 
+    op_start = 0;
+end
+endtask
+
 initial begin
     rst = 1'b1;
     #100
     rst = 1'b0;
-    push_back(3);
+    insert(head,3);
+    insert(head,3);
     #100
-    push_front(3);
-    #2000
-    read(3);
-    #2000
-    delete_value(linked_list_exp[2]);
+    insert(head,5);
+    insert(head,6);
+    insert(head,7);
+    insert(ADDR_NULL,3);
+    insert(ADDR_NULL,4);
+    insert(ADDR_NULL,3);
+    insert(ADDR_NULL,3);
+    insert(ADDR_NULL,3);
+    #200
+    delete_addr(head);
+    delete_addr(head);
+    delete_addr(head);  
+    delete_addr(head);
+    delete_addr(head);
+    delete_addr(head);
+    delete_addr(tail);
+    delete_addr(head);
+    delete_addr(head);        
+//    read_n(3);
+    #500
+//    delete_value(linked_list_exp[2]);
     $stop; 
 end
 
