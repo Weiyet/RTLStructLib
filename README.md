@@ -2,8 +2,8 @@
 RTL data structure
 - FIFO (Stack)
 - LIFO (Queue)
-
+- Singly Linked List
+  
 In Progress.....
-- Singly Linked List 
 - Doubly Linked List 
 - Hash Table 
