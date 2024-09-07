@@ -188,6 +188,8 @@ module singly_linked_list #(
                 end
             end
             FIND_ADDR: begin // to get pre pos (pre_ptr)
+//                if (!valid_rd_buf) begin
+//                    next_state <= FAULT;     
                 if(addr_match) begin // change to addr_match
                     if(op_is_delete_by_addr) begin
                         // update curr pos to invalid
@@ -206,10 +208,10 @@ module singly_linked_list #(
                         // update next_node_addr of pre pos to next pos
                         next_node_addr_idx <= cur_ptr; 
                         next_node_addr_in <= find_next_ptr(valid_bits);
-                        next_state <= INSERT_STG1;                   
-                    end else if (!valid_rd_buf) begin
-                        next_state <= FAULT;                     
-                    end
+                        next_state <= INSERT_STG1;              
+                    end          
+                end else if (index >= (length - 1)) begin
+                    next_state <= FAULT;            
                 end else begin
                    rd_req <= 1'b1;
                    target_idx <= next_addr_rd_buf;
@@ -217,15 +219,17 @@ module singly_linked_list #(
                 end
             end
             FIND_VALUE: begin
+//                if (!valid_rd_buf) begin
+//                    next_state <= FAULT;     
                 if(data_rd_buf == data_in) begin 
-                        // update curr pos to invalid
-                        wr_req <= 1'b1;
-                        target_idx <= cur_ptr;
-                        valid_wr <= 1'b0;
-                        // update next_node_addr of pre pos to next pos
-                        next_node_addr_idx <= pre_ptr; 
-                        next_node_addr_in <= next_addr_rd_buf;
-                        next_state <= EXECUTE;    
+                    // update curr pos to invalid
+                    wr_req <= 1'b1;
+                    target_idx <= cur_ptr;
+                    valid_wr <= 1'b0;
+                    // update next_node_addr of pre pos to next pos
+                    next_node_addr_idx <= pre_ptr; 
+                    next_node_addr_in <= next_addr_rd_buf;
+                    next_state <= EXECUTE;    
                 end else if (index >= (length - 1)) begin
                     next_state <= FAULT; 
                 end else begin
