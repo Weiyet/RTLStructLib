@@ -131,6 +131,7 @@ module singly_linked_list #(
         target_idx <= {ADDR_WIDTH{1'b0}};
         next_node_addr_idx <= {ADDR_WIDTH{1'b0}};
         fault <= 1'b0;
+        next_state <= IDLE;
         case(state)
             IDLE: begin
                 if (op_is_insert) begin
@@ -320,7 +321,7 @@ module singly_linked_list #(
         end else if (op_is_insert & ((addr_in == head_idx_sel) | empty) & (next_state == EXECUTE)) begin //INVALID addr
             head <= find_next_ptr(valid_bits);
         end else if ((op_is_delete_by_value | op_is_delete_by_addr) & (next_state == EXECUTE) & (length == 1)) begin
-            tail <= ADDR_NULL;
+            head <= ADDR_NULL;
         end else if (op_is_delete_by_addr & (addr_in == head_idx_sel)  & (next_state == EXECUTE)) begin
             head <= next_addr_rd_buf;
         end else if (op_is_delete_by_value & (cur_ptr == head) & (next_state == EXECUTE)) begin
