@@ -34,8 +34,10 @@ wire [DATA_WIDTH-1:0] data_rd;
 wire lifo_empty;
 wire lifo_full;
 
-// for xilinx gate sim
-glbl glbl();
+`ifdef XILINX_GLS
+    // for xilinx gate sim
+    glbl glbl();
+`endif
 
 lifo #(
 .DEPTH(DEPTH), 
