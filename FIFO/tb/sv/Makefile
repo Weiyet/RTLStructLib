@@ -11,14 +11,14 @@ gen_sim: tb.sv ${SIM_OPTS}  # to generate executable file by using iverilator
 	iverilog -g2012 -s tb -o ${DUT}.sim $^
 
 synth: ${SIM_OPTS}
-	yosys -p synth_xilinx ${SIM_OPTS} -L synth.log -o ${DUT}.netlist.v
+	yosys -p synth_xilinx ${SIM_OPTS} -L synth.log -o ${DUT}.netlist.v 
     #timeout
 
 netlist_sim: gen_netlist_sim 
 	./${DUT}.netlist.sim +VCDFILE=netlist_sim.vcd +VCDLEVEL=0 +SEED=${SEED} | tee netlist_sim.log
 
 gen_netlist_sim: tb.sv ${DUT}.netlist.v | ${XILINX_LIB_DIR}
-	iverilog -g2012 -DXILINX_GLS -s tb -y ${XILINX_LIB_DIR} -y ${XILINX_LIB_DIR}/unisims -o ${DUT}.netlist.sim tb.sv ${DUT}.netlist.v
+	iverilog -g2012 -DXILINX_GLS -s tb -y ${XILINX_LIB_DIR} -y ${XILINX_LIB_DIR}/unisims -DXILINX_GLS -o ${DUT}.netlist.sim tb.sv ${DUT}.netlist.v
 
 ${XILINX_LIB_DIR}:
 	git clone ${XILINX_LIB_URL}
