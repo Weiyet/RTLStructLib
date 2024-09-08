@@ -56,9 +56,11 @@ reg  [ADDR_WIDTH-1:0] pre_tail; // Addr of tail
 wire full;
 wire empty;
 wire fault; 
- 
- // for xilinx gate sim
-glbl glbl();
+
+`ifdef XILINX_GLS
+    // for xilinx gate sim
+    glbl glbl();
+`endif
  
     singly_linked_list #(.DATA_WIDTH(DUT_DATA_WIDTH),.MAX_NODE(DUT_MAX_NODE)) DUT
     (   /*input*/  .rst(rst),
