@@ -4,11 +4,11 @@
 // Module Name: singly_linked_list
 // Description: Supported Operation 
 //             0. Read_Addr(addr_in) -> data_out 
-//             1. Insert_Addr(addr_in, data_in) 
-//             5. Insert_Index(addr_in, data_in)
+//             1. Insert_At_Addr(addr_in, data_in) 
+//             5. Insert_At_Index(addr_in, data_in)
 //             2. Delete_Value(data_in)
-//             3. Delete_Addr(addr_in)
-//             7. Delete_Index(addr_in) 
+//             3. Delete_At_Addr(addr_in)
+//             7. Delete_At_Index(addr_in) 
 // Additional Comments: .
 // 
 //////////////////////////////////////////////////////////////////////////////////
@@ -49,8 +49,10 @@ module singly_linked_list #(
     node_st node [0:MAX_NODE-1];
     wire [MAX_NODE-1:0] valid_bits;
     wire op_is_read; 
-    wire op_is_insert;
+    wire op_is_insert_at_addr;
+    wire op_is_insert_at_index;
     wire op_is_delete_by_addr;
+    wire op_is_delete_by_index;
     wire op_is_delete_by_value;
     wire addr_match;
     wire [ADDR_WIDTH-1:0] head_idx_sel;
@@ -80,10 +82,12 @@ module singly_linked_list #(
     localparam FAULT = 3'b101;
     localparam EXECUTE = 3'b100;
 
-    assign op_is_read = op[1:0] == 2'd0 & op_start;
-    assign op_is_insert = op[1:0] == 2'd1 & op_start; 
-    assign op_is_delete_by_value = op[1:0] == 2'd2 & op_start; 
-    assign op_is_delete_by_addr = op[1:0] == 2'd3 & op_start;
+    assign op_is_read = op[2:0] == 3'd0 & op_start;
+    assign op_is_insert_at_addr = op[2:0] == 3'd1 & op_start; 
+    assign op_is_insert_at_index = op[2:0] == 3'd5 & op_start; 
+    assign op_is_delete_by_value = op[2:0] == 3'd2 & op_start; 
+    assign op_is_delete_by_index = op[2:0] == 3'd7 & op_start; 
+    assign op_is_delete_by_addr = op[2:0] == 3'd3 & op_start;
 
     always @ (posedge clk or posedge rst) begin
         if (rst) begin
@@ -107,10 +111,10 @@ module singly_linked_list #(
         end 
     end
 
-    assign addr_match = op[2] & op_is_insert ? addr_in == (index + 1) :
-                        op[2] & op_is_delete_by_addr ? addr_in == index :
-                        !op[2] &  op_is_insert ? next_addr_rd_buf == addr_in :
-                        /*!op[2] & op_is_delete_by_addr ?*/ cur_ptr == addr_in;
+    assign addr_match = op_is_insert_at_index ? addr_in == (index + 1) :
+                        op_is_delete_by_index ? addr_in == index :
+                        op_is_insert_at_addr ? next_addr_rd_buf == addr_in :
+                        op_is_delete_by_addr ? cur_ptr == addr_in : 0;
     assign head_idx_sel = op[2] ? 0 : head;
     assign tail_idx_sel = op[2] ? (length-1) : tail;
     assign addr_overflow = (op[2] & (addr_in >= length)) | (addr_in >= ADDR_NULL);
@@ -134,7 +138,7 @@ module singly_linked_list #(
         next_state <= IDLE;
         case(state)
             IDLE: begin
-                if (op_is_insert) begin
+                if (op_is_insert_at_addr | op_is_insert_at_index) begin
                     if (full) begin
                         next_state <= FAULT; 
                     end else if (addr_in == head_idx_sel) begin // push_front
@@ -176,7 +180,7 @@ module singly_linked_list #(
                       target_idx <= head;
                       next_state <= FIND_VALUE;
                    end
-                end else if (op_is_delete_by_addr) begin 
+                end else if (op_is_delete_by_addr | op_is_delete_by_index) begin 
                    if(empty | addr_overflow) begin
                       next_state <= FAULT; 
                    end else begin
@@ -192,7 +196,7 @@ module singly_linked_list #(
 //                if (!valid_rd_buf) begin
 //                    next_state <= FAULT;     
                 if(addr_match) begin // change to addr_match
-                    if(op_is_delete_by_addr) begin
+                    if(op_is_delete_by_addr | op_is_delete_by_index) begin
                         // update curr pos to invalid
                         wr_req <= 1'b1;
                         target_idx <= cur_ptr;
@@ -201,7 +205,7 @@ module singly_linked_list #(
                         next_node_addr_idx <= pre_ptr; 
                         next_node_addr_in <= next_addr_rd_buf;
                         next_state <= EXECUTE; 
-                    end else if (op_is_insert) begin
+                    end else if (op_is_insert_at_index | op_is_insert_at_addr) begin
                         // insert new pos 
                         wr_req <= 1'b1;
                         target_idx <= find_next_ptr(valid_bits);
@@ -318,11 +322,11 @@ module singly_linked_list #(
     always @ (posedge clk or posedge rst) begin
         if (rst) begin
             head <= ADDR_NULL;
-        end else if (op_is_insert & ((addr_in == head_idx_sel) | empty) & (next_state == EXECUTE)) begin //INVALID addr
+        end else if ((op_is_insert_at_index | op_is_insert_at_addr) & ((addr_in == head_idx_sel) | empty) & (next_state == EXECUTE)) begin //INVALID addr
             head <= find_next_ptr(valid_bits);
-        end else if ((op_is_delete_by_value | op_is_delete_by_addr) & (next_state == EXECUTE) & (length == 1)) begin
+        end else if ((op_is_delete_by_value | op_is_delete_by_addr | op_is_delete_by_index) & (next_state == EXECUTE) & (length == 1)) begin
             head <= ADDR_NULL;
-        end else if (op_is_delete_by_addr & (addr_in == head_idx_sel)  & (next_state == EXECUTE)) begin
+        end else if ((op_is_delete_by_addr | op_is_delete_by_index) & (addr_in == head_idx_sel)  & (next_state == EXECUTE)) begin
             head <= next_addr_rd_buf;
         end else if (op_is_delete_by_value & (cur_ptr == head) & (next_state == EXECUTE)) begin
             head <= next_addr_rd_buf;
@@ -332,11 +336,11 @@ module singly_linked_list #(
     always @ (posedge clk or posedge rst) begin
         if (rst) begin
             tail <= ADDR_NULL;
-        end else if (op_is_insert & (addr_overflow | empty) & (next_state == EXECUTE)) begin
+        end else if ((op_is_insert_at_index | op_is_insert_at_addr) & (addr_overflow | empty) & (next_state == EXECUTE)) begin
             tail <= find_next_ptr(valid_bits);
-        end else if ((op_is_delete_by_value | op_is_delete_by_addr) & (next_state == EXECUTE) & (length == 1)) begin
+        end else if ((op_is_delete_by_value | op_is_delete_by_addr | op_is_delete_by_index) & (next_state == EXECUTE) & (length == 1)) begin
             tail <= ADDR_NULL;
-        end else if (op_is_delete_by_addr & (addr_in == tail_idx_sel) & (next_state == EXECUTE)) begin
+        end else if ((op_is_delete_by_addr | op_is_delete_by_index) & (addr_in == tail_idx_sel) & (next_state == EXECUTE)) begin
             tail <= pre_ptr; 
         end else if (op_is_delete_by_value & (cur_ptr == tail) & (next_state == EXECUTE)) begin
             tail <= pre_ptr;
@@ -346,9 +350,9 @@ module singly_linked_list #(
     always @ (posedge clk or posedge rst) begin
         if (rst) begin
             length <= 0;
-        end else if (op_is_insert & (next_state == EXECUTE)) begin
+        end else if ((op_is_insert_at_index | op_is_insert_at_addr) & (next_state == EXECUTE)) begin
             length <= length + 1;
-        end else if (op_is_delete_by_addr & (next_state == EXECUTE)) begin
+        end else if ((op_is_delete_by_addr | op_is_delete_by_index) & (next_state == EXECUTE)) begin
             length <= length - 1;
         end else if (op_is_delete_by_value & (next_state == EXECUTE)) begin
             length <= length - 1;
