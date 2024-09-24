@@ -57,6 +57,7 @@ module doubly_linked_list #(
     wire op_is_delete_by_index;
     wire op_is_delete_by_value;
  //   wire addr_match;
+    wire ascending; 
     wire [ADDR_WIDTH-1:0] head_idx_sel;
     wire [ADDR_WIDTH-1:0] tail_idx_sel;
     wire addr_overflow;
@@ -130,6 +131,7 @@ module doubly_linked_list #(
     assign head_idx_sel = op[2] ? 0 : head;
     assign tail_idx_sel = op[2] ? (length-1) : tail;
     assign addr_overflow = (op[2] & (addr_in >= length)) | (addr_in >= ADDR_NULL);
+    assign ascending = (addr_in < (length << 2)); 
    
     always @ (posedge clk or posedge rst) begin
         if (rst) begin
@@ -181,7 +183,7 @@ module doubly_linked_list #(
                         next_state <= EXECUTE;                        
                     end else begin
                         rd_req <= 1'b1;
-                        target_idx <= op[2]? head : addr_in;
+                        target_idx <= op[2]? (ascending ? head : tail) : addr_in;
                         next_state <= op[2]? FIND_INDEX : FIND_ADDR;
                     end
                 end else if (op_is_read) begin
@@ -205,7 +207,7 @@ module doubly_linked_list #(
                       next_state <= FAULT; 
                    end else begin
                       rd_req <= 1'b1;
-                      target_idx <= op[2] ? head : addr_in; //FIXME delete tail 
+                      target_idx <= op[2] ? (ascending ? head : tail) : addr_in;
                       next_state <= op[2] ? FIND_INDEX : FIND_ADDR;
                    end
                 end else begin
@@ -272,11 +274,11 @@ module doubly_linked_list #(
                         pre_node_addr_in <= pre_addr_rd_buf;
                         next_state <= INSERT_STG1;         
                     end 
-                end else if (index >= (length - 1)) begin
+                end else if ((ascending & index >= (length - 1)) | (!ascending & index == 0)) begin
                     next_state <= FAULT;            
                 end else begin
                    rd_req <= 1'b1;
-                   target_idx <= next_addr_rd_buf;
+                   target_idx <= ascending ? next_addr_rd_buf : pre_addr_rd_buf;
                    next_state <= FIND_INDEX;     
                 end
             end
@@ -322,8 +324,12 @@ module doubly_linked_list #(
     always @ (posedge clk, posedge rst) begin
         if (rst) begin
             index <= 0;
-        end else if (state == FIND_ADDR | state == FIND_VALUE | state == FIND_INDEX) begin
+        end else if (state == FIND_VALUE) begin
             index <= index + 1;
+        end else if (state == FIND_INDEX) begin
+            index <= ascending ? (index + 1) : (index - 1);
+        end else if (!ascending & next_state == FIND_INDEX) begin
+            index <= length - 1; 
         end else begin
             index <= 0;
         end
@@ -350,8 +356,8 @@ module doubly_linked_list #(
             pre_node_addr <= ADDR_NULL;
         end else if (op_is_read & (next_state == EXECUTE)) begin
             data_out <=  node[target_idx].data;
-            next_node_addr <= node[target_idx].next_node_addr;
-            pre_node_addr <= node[target_idx].pre_node_addr;
+            next_node_addr <= (addr_in == tail) ? ADDR_NULL : node[target_idx].next_node_addr;
+            pre_node_addr <= (addr_in == head) ? ADDR_NULL : node[target_idx].pre_node_addr;
         end
     end
    
