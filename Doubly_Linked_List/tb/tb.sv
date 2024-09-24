@@ -107,9 +107,9 @@ begin
 end
 endtask
 
-task read_n(input integer count); 
+task read_n_front(input integer count); 
 begin
-    $display("%0t OP_Read %0d times", $realtime,count); 
+    $display("%0t OP_Read from front %0d times", $realtime,count); 
     i = 0;
     @(posedge (clk));
     #1 
@@ -148,8 +148,54 @@ begin
        err_cnt = err_cnt + 1; 
     end
     op_start = 0;
-    $display("%0t Complete OP_Read %0d times, linked_list_exp = %p", $realtime,count,linked_list_exp[0:(linked_list_exp.size()-1)]); 
-    $display("%0t Complete OP_Read %0d times, linked_list_addr = %p\n", $realtime,count,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+    $display("%0t Complete OP_Read from front %0d times, linked_list_exp = %p", $realtime,count,linked_list_exp[0:(linked_list_exp.size()-1)]); 
+    $display("%0t Complete OP_Read from front %0d times, linked_list_addr = %p\n", $realtime,count,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+end
+endtask  
+
+task read_n_back(input integer count); 
+begin
+    $display("%0t OP_Read from back %0d times", $realtime,count); 
+    i = 0;
+    @(posedge (clk));
+    #1 
+    op = OP_Read;  
+    op_start = 1;
+    addr_in = tail;
+    i = i + 1;
+    while (i<count) begin  
+        @(posedge (clk));
+        #1 
+        if(op_done) begin
+            if( (i-1) >= linked_list_exp.size()) begin
+               if(fault) begin
+                  $display("%0t Data read out of bound, fault flag is asserted correctly",$realtime);
+               end else begin
+                  $error("%0t Data read out of bound, fault flag is not asserted",$realtime);
+                  err_cnt = err_cnt + 1;
+               end
+            end else if(data_out == linked_list_exp[linked_list_exp.size()-1-(i-1)]) begin
+               $display("%0t Data read: %0d",$realtime,data_out);
+            end else begin
+               $error("%0t Data read: %0d, Data Exp: %0d", $realtime, data_out, linked_list_exp[linked_list_exp.size()-1-i-1]);
+               err_cnt = err_cnt + 1; 
+            end
+            addr_in = pre_node_addr;
+            i = i + 1;
+        end
+    end
+    @(posedge (clk))
+    #1 
+    wait(op_done)
+    if(data_out == linked_list_exp[0]) begin
+       $display("%0t Data read: %0d",$realtime, data_out);
+    end else begin
+       $error("%0t Data read: %0d, Data Exp: %0d", $realtime, data_out, linked_list_exp[0]);
+       err_cnt = err_cnt + 1; 
+    end
+    op_start = 0;
+    $display("%0t Complete OP_Read from back %0d times, linked_list_exp = %p", $realtime,count,linked_list_exp[0:(linked_list_exp.size()-1)]); 
+    $display("%0t Complete OP_Read from back %0d times, linked_list_addr = %p\n", $realtime,count,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
 endtask  
 
@@ -300,7 +346,7 @@ begin
        end 
        linked_list_exp.insert(addr, value);
        find_next_addr(next);
-       linked_list_addr.insert(next);
+       linked_list_addr.insert(addr, next);
        $display("%0t Data Written to Index %0d : %0d",$realtime,addr,value);
     end
     if(linked_list_exp.size() >=  (DUT_MAX_NODE)) begin
@@ -489,7 +535,7 @@ begin
     insert_at_index(ADDR_NULL,1);
     insert_at_index(0,3);
     #200
-    read_n(linked_list_exp.size());
+    read_n_back(linked_list_exp.size());
     #500;
     delete_value(7);
     delete_at_index(0);
@@ -531,7 +577,7 @@ begin
     insert_at_addr(ADDR_NULL,1);
     insert_at_addr(0,3);
     #200
-    read_n(linked_list_exp.size());
+    read_n_front(linked_list_exp.size());
     #500
     delete_value(7);
     delete_at_addr(0);
