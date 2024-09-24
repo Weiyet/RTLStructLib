@@ -26,6 +26,7 @@ module doubly_linked_list #(
         input op_start, 
         output reg op_done,
         output reg [DATA_WIDTH-1:0] data_out,
+        output reg [ADDR_WIDTH-1:0] pre_node_addr, // Addr of pre node
         output reg [ADDR_WIDTH-1:0] next_node_addr, // Addr of next node
         // status 
         output reg [ADDR_WIDTH-1:0] length,
@@ -55,7 +56,7 @@ module doubly_linked_list #(
     wire op_is_delete_by_addr;
     wire op_is_delete_by_index;
     wire op_is_delete_by_value;
-    wire addr_match;
+ //   wire addr_match;
     wire [ADDR_WIDTH-1:0] head_idx_sel;
     wire [ADDR_WIDTH-1:0] tail_idx_sel;
     wire addr_overflow;
@@ -88,8 +89,8 @@ module doubly_linked_list #(
     localparam EXECUTE = 3'b100;
 
     assign op_is_read = op[2:0] == 3'd0 & op_start;
-    assign op_is_insert_at_index = op[2:0] == 3'd1 & op_start; 
-    assign op_is_insert_at_addr = op[2:0] == 3'd5 & op_start; 
+    assign op_is_insert_at_index = op[2:0] == 3'd5 & op_start; 
+    assign op_is_insert_at_addr = op[2:0] == 3'd1 & op_start; 
     assign op_is_delete_by_value = op[2:0] == 3'd2 & op_start;
     assign op_is_delete_by_index = op[2:0] == 3'd7 & op_start; 
     assign op_is_delete_by_addr = op[2:0] == 3'd3 & op_start;
@@ -121,7 +122,7 @@ module doubly_linked_list #(
             for (int i = 0; i < MAX_NODE; i = i+1) begin
                 node[i].pre_node_addr <= ADDR_NULL;
             end
-        end else if (wr_req & next_node_addr_idx != ADDR_NULL) begin  
+        end else if (wr_req & pre_node_addr_idx != ADDR_NULL) begin  
             node[pre_node_addr_idx[NODE_WIDTH-1:0]].pre_node_addr <= pre_node_addr_in;
         end 
     end
@@ -143,12 +144,12 @@ module doubly_linked_list #(
         op_done <= 1'b0;
         rd_req <= 1'b0;
         wr_req <= 1'b0;
-        target_idx <= {ADDR_WIDTH{1'b0}};
+        target_idx <= ADDR_NULL;
         valid_wr <= 1'b0;
-        next_node_addr_idx <= {ADDR_WIDTH{1'b0}};
-        next_node_addr_in <= {ADDR_WIDTH{1'b0}};
-        pre_node_addr_idx <= {ADDR_WIDTH{1'b0}};
-        pre_node_addr_in <= {ADDR_WIDTH{1'b0}};
+        next_node_addr_idx <= ADDR_NULL;
+        next_node_addr_in <= ADDR_NULL;
+        pre_node_addr_idx <= ADDR_NULL;
+        pre_node_addr_in <= ADDR_NULL;
         fault <= 1'b0;
         next_state <= IDLE;
         case(state)
@@ -164,6 +165,8 @@ module doubly_linked_list #(
                         valid_wr <= 1'b1;
                         next_node_addr_idx <= find_next_ptr(valid_bits);
                         next_node_addr_in <= head;
+                        pre_node_addr_idx <= head;
+                        pre_node_addr_in <= find_next_ptr(valid_bits);
                         next_state <= EXECUTE;
                     end else if (addr_overflow) begin // push_back
                         // Add new node 
@@ -173,10 +176,12 @@ module doubly_linked_list #(
                         valid_wr <= 1'b1;
                         next_node_addr_idx <= tail;
                         next_node_addr_in <= find_next_ptr(valid_bits);
+                        pre_node_addr_idx <= find_next_ptr(valid_bits);
+                        pre_node_addr_in <= tail;
                         next_state <= EXECUTE;                        
                     end else begin
                         rd_req <= 1'b1;
-                        target_idx <= addr_in;
+                        target_idx <= op[2]? head : addr_in;
                         next_state <= op[2]? FIND_INDEX : FIND_ADDR;
                     end
                 end else if (op_is_read) begin
@@ -200,8 +205,8 @@ module doubly_linked_list #(
                       next_state <= FAULT; 
                    end else begin
                       rd_req <= 1'b1;
-                      target_idx <= addr_in;
-                      next_state <= op[2] ? FIND_ADDR : FIND_INDEX;
+                      target_idx <= op[2] ? head : addr_in; //FIXME delete tail 
+                      next_state <= op[2] ? FIND_INDEX : FIND_ADDR;
                    end
                 end else begin
                    next_state <= IDLE;
@@ -229,21 +234,21 @@ module doubly_linked_list #(
                         target_idx <= find_next_ptr(valid_bits);
                         valid_wr <= 1'b1;    
                         // update next_node_addr of curr pos to new pos
-                        next_node_addr_idx <= cur_ptr; 
+                        next_node_addr_idx <= pre_addr_rd_buf; 
                         next_node_addr_in <= find_next_ptr(valid_bits);  
                         // update next_node_addr of next pos to neew pos
-                        pre_node_addr_idx <= next_addr_rd_buf;
-                        pre_node_addr_in <= find_next_ptr(valid_bits);
-                        next_state <= INSERT_STG1;
+                        pre_node_addr_idx <= find_next_ptr(valid_bits);
+                        pre_node_addr_in <= pre_addr_rd_buf;
+                        next_state <= INSERT_STG1;   
                     end          
-                end
+                end 
             end
-            FIND_INDEX: begin // to get pre pos (pre_ptr)
-//                if (!valid_rd_buf) begin
-//                    next_state <= FAULT;     
-                if(addr_in == index) begin 
+            FIND_INDEX: begin 
+                if (!valid_rd_buf) begin
+                    next_state <= FAULT;     
+                end else if (addr_in == index) begin 
                     if(op_is_delete_by_index) begin
-                        // update curr pos to invalid
+                        // update cur pos to invalid
                         wr_req <= 1'b1;
                         target_idx <= cur_ptr;
                         valid_wr <= 1'b0;
@@ -254,24 +259,28 @@ module doubly_linked_list #(
                         pre_node_addr_idx <= next_addr_rd_buf;
                         pre_node_addr_in <= pre_addr_rd_buf;
                         next_state <= EXECUTE; 
-                    end else if (op_is_insert_at_addr) begin
+                    end else if (op_is_insert_at_index) begin
                         // insert new pos 
                         wr_req <= 1'b1;
                         target_idx <= find_next_ptr(valid_bits);
                         valid_wr <= 1'b1;    
                         // update next_node_addr of curr pos to new pos
-                        next_node_addr_idx <= cur_ptr; 
+                        next_node_addr_idx <= pre_addr_rd_buf; 
                         next_node_addr_in <= find_next_ptr(valid_bits);  
                         // update next_node_addr of next pos to neew pos
-                        pre_node_addr_idx <= next_addr_rd_buf;
-                        pre_node_addr_in <= find_next_ptr(valid_bits);
-                        next_state <= INSERT_STG1;            
+                        pre_node_addr_idx <= find_next_ptr(valid_bits);
+                        pre_node_addr_in <= pre_addr_rd_buf;
+                        next_state <= INSERT_STG1;         
                     end 
-                end 
+                end else if (index >= (length - 1)) begin
+                    next_state <= FAULT;            
+                end else begin
+                   rd_req <= 1'b1;
+                   target_idx <= next_addr_rd_buf;
+                   next_state <= FIND_INDEX;     
+                end
             end
-            FIND_VALUE: begin
-//                if (!valid_rd_buf) begin
-//                    next_state <= FAULT;     
+            FIND_VALUE: begin  
                 if(data_rd_buf == data_in) begin 
                     // update curr pos to invalid
                     wr_req <= 1'b1;
@@ -292,10 +301,10 @@ module doubly_linked_list #(
             INSERT_STG1: begin
                 wr_req <= 1'b1; 
                 next_node_addr_idx <= cur_ptr; //new inserted node
-                next_node_addr_in <= next_addr_rd_buf;
-                pre_node_addr_idx <= cur_ptr; 
-                pre_node_addr_in <= pre_ptr;
-                next_state <= EXECUTE; 
+                next_node_addr_in <= pre_ptr;
+                pre_node_addr_idx <= pre_ptr; 
+                pre_node_addr_in <= cur_ptr;
+                next_state <= EXECUTE;  
             end
             EXECUTE: begin
                 op_done <= 1'b1;
@@ -313,7 +322,7 @@ module doubly_linked_list #(
     always @ (posedge clk, posedge rst) begin
         if (rst) begin
             index <= 0;
-        end else if (state == FIND_ADDR | state == FIND_VALUE) begin
+        end else if (state == FIND_ADDR | state == FIND_VALUE | state == FIND_INDEX) begin
             index <= index + 1;
         end else begin
             index <= 0;
@@ -330,17 +339,19 @@ module doubly_linked_list #(
             data_rd_buf <=  node[target_idx].data;
             valid_rd_buf <= node[target_idx].valid;
             next_addr_rd_buf <= node[target_idx].next_node_addr;
-            pre_addr_rd_buf <= node[target_idx].next_node_addr;
+            pre_addr_rd_buf <= node[target_idx].pre_node_addr;
         end
     end
     
     always @ (posedge clk, posedge rst) begin
         if (rst) begin
             data_out <= {DATA_WIDTH{1'b0}};
-            next_node_addr <= {ADDR_WIDTH{1'b0}};
+            next_node_addr <= ADDR_NULL;
+            pre_node_addr <= ADDR_NULL;
         end else if (op_is_read & (next_state == EXECUTE)) begin
             data_out <=  node[target_idx].data;
             next_node_addr <= node[target_idx].next_node_addr;
+            pre_node_addr <= node[target_idx].pre_node_addr;
         end
     end
    
@@ -374,9 +385,9 @@ module doubly_linked_list #(
             head <= ADDR_NULL;
         end else if ((op_is_insert_at_addr | op_is_insert_at_index) & ((addr_in == head_idx_sel) | empty) & (next_state == EXECUTE)) begin //INVALID addr
             head <= find_next_ptr(valid_bits);
-        end else if ((op_is_delete_by_value | op_is_delete_by_addr) & (next_state == EXECUTE) & (length == 1)) begin
+        end else if ((op_is_delete_by_value | op_is_delete_by_addr | op_is_delete_by_index) & (next_state == EXECUTE) & (length == 1)) begin
             head <= ADDR_NULL;
-        end else if (op_is_delete_by_addr & (addr_in == head_idx_sel)  & (next_state == EXECUTE)) begin
+        end else if ((op_is_delete_by_addr | op_is_delete_by_index) & (addr_in == head_idx_sel)  & (next_state == EXECUTE)) begin
             head <= next_addr_rd_buf;
         end else if (op_is_delete_by_value & (cur_ptr == head) & (next_state == EXECUTE)) begin
             head <= next_addr_rd_buf;
