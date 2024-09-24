@@ -298,7 +298,7 @@ begin
        end 
        linked_list_exp.insert(addr, value);
        find_next_addr(next);
-       linked_list_addr.insert(next);
+       linked_list_addr.insert(addr, next);
        $display("%0t Data Written to Index %0d : %0d",$realtime,addr,value);
     end
     if(linked_list_exp.size() >=  (DUT_MAX_NODE)) begin
@@ -313,8 +313,8 @@ begin
        err_cnt = err_cnt + 1; 
     end
     op_start = 0;
-    $display("%0t Complete OP_Delete_At_Index %0d index %0d value, linked_list_exp = %p", $realtime,addr,value,linked_list_exp[0:(linked_list_exp.size()-1)]); 
-    $display("%0t Complete OP_Delete_At_Index %0d index %0d value, linked_list_addr = %p\n", $realtime,addr,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+    $display("%0t Complete OP_Insert_At_Index %0d index %0d value, linked_list_exp = %p", $realtime,addr,value,linked_list_exp[0:(linked_list_exp.size()-1)]); 
+    $display("%0t Complete OP_Insert_At_Index %0d index %0d value, linked_list_addr = %p\n", $realtime,addr,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
 endtask
 
