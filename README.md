@@ -4,6 +4,9 @@ RTL data structure
 - LIFO (Queue)
 - Singly Linked List
 - Doubly Linked List
+- Table
   
 In Progress..... 
 - Hash Table 
+- Binary Tree
+- AVL 
