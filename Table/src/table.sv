@@ -30,7 +30,7 @@ module table_top #(
     always @ (posedge clk or negedge rst) begin
         if(rst) begin
             for (int i=0; i<TABLE_SIZE; i=i+1) begin
-                data_stored[i] = {(DATA_WIDTH-1){1'b0}};
+                data_stored[i] = 'b0;
             end
         end else if (wr_en) begin
             for (int i=1; i<=INPUT_RATE; i=i+1) begin
@@ -42,7 +42,7 @@ module table_top #(
     always @ (posedge clk or negedge rst) begin 
         if(rst) begin
             for (int i=1; i<=OUTPUT_RATE; i=i+1) begin
-                data_rd[i*DATA_WIDTH-1 -: DATA_WIDTH] = {(DATA_WIDTH-1){1'b0}};
+                data_rd[i*DATA_WIDTH-1 -: DATA_WIDTH] = 'b0;
             end
         end else if (rd_en) begin
             for (int i=1; i<=OUTPUT_RATE; i=i+1) begin

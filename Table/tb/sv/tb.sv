@@ -21,7 +21,7 @@ module tb(
     parameter TB_TEST_WEIGHT = 1; 
     parameter TB_SIM_TIMEOUT = 30; //ms.
 
-    localparam MAX_DATA = 2**8 - 1;
+    localparam MAX_DATA = 2**(DATA_WIDTH) - 1;
     localparam INDEX_WIDTH = $clog2(TABLE_SIZE-1);
 
     bit [DATA_WIDTH-1:0] table_expected [TABLE_SIZE];
@@ -113,8 +113,6 @@ module tb(
         @(posedge(clk)) begin
             #1;
             for (int j=0; j<OUTPUT_RATE; j=j+1) begin
-                index_target = index_queue.pop_front();
-                index_rd[(j+1)*INDEX_WIDTH-1 -: INDEX_WIDTH] = index_target; 
                 if(setup_done) begin
                     index_target = index_temp.pop_front();
                     if(data_rd[(j+1)*DATA_WIDTH-1 -: DATA_WIDTH] !== table_expected[index_target]) begin
@@ -152,7 +150,7 @@ module tb(
             rst = 1;
             #100 
             for (int i=0; i<TABLE_SIZE; i=i+1) begin
-              table_expected[i] = {(DATA_WIDTH-1){1'b0}};
+              table_expected[i] = 'b0;
             end
             rst = 0;
             $display("\n%0t TABLE RANDOM WRITE SEQ",$realtime);
