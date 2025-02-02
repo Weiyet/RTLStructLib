@@ -5,7 +5,7 @@ SEED ?= $$(shuf -i 1-10000 -n 1)
 
 # DUT parameter #"-p" iverilog command flags
 COMPILE_ARGS = -P tb.TABLE_SIZE=32
-COMPILE_ARGS += -P tb.DATA_WIDTH=1
+COMPILE_ARGS += -P tb.DATA_WIDTH=8
 COMPILE_ARGS += -P tb.INPUT_RATE=2
 COMPILE_ARGS += -P tb.OUTPUT_RATE=2
 COMPILE_ARGS += -P tb.TB_CLK_PERIOD=100
@@ -29,7 +29,7 @@ netlist_sim: gen_netlist_sim
 	./${DUT}.netlist.sim +VCDFILE=netlist_sim.vcd +VCDLEVEL=0 +SEED=${SEED} | tee netlist_sim.log
 
 gen_netlist_sim: tb.sv ${DUT}.netlist.v | ${XILINX_LIBS_DIR}
-	iverilog -g2012 -s tb -y ${XILINX_LIB_DIR} -y ${XILINX_LIB_DIR}/unisims -DXILINX_GLS {COMPILE_ARGS} -o ${DUT}.netlist.sim $^
+	iverilog -g2012 -s tb -y ${XILINX_LIB_DIR} -y ${XILINX_LIB_DIR}/unisims -DXILINX_GLS ${COMPILE_ARGS} -o ${DUT}.netlist.sim $^
 
 ${XILINX_LIBS_DIR}:
 	git clone ${XILINX_LIB_URL}
