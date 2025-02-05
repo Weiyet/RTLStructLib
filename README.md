@@ -44,6 +44,7 @@ git clone https://github.com/Weiyet/RTL_Data_Structure.git
  ├── 📂 tb/              # Testbench Directory <br>
  │    ├── 📂 cocotb/     # Python Cocotb Testbench <br>
  │    ├── 📂 sv/         # SystemVerilog Testbench <br>
+ │    ├── 📃 rtl_list.f  # RTL file list required for the modules <br>       
 
 2️⃣ RTL Simulation and Verification
 ```
