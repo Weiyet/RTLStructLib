@@ -6,7 +6,7 @@ RTLStructlib is an open-source project providing a collection of synthesizable R
 By using these pre-built RTL modules, engineers can accelerate development, reduce verification time, and focus on higher-level system design.
 
 ### Features
-✅ Synthesizable，Optimized, Modular and Reusable <br>
+✅ Synthesizable, Optimized, Modular and Reusable <br>
 ✅ Fully parameterized <br>
 ✅ Comprehensive verification sequence and testbench <br>
 ✅ Verification Agent <br>
@@ -17,6 +17,7 @@ By using these pre-built RTL modules, engineers can accelerate development, redu
 - LIFO (Last-In-First-Out) Stack – Configurable width and depth <br>
 - Singly Linked List – Efficient memory utilization, dynamic data handling <br>
 - Doubly Linked List – Bi-directional traversal support <br>
+- Table - Indexed storage mechanism, similar to a register file, enabling rapid direct access and simultaneous read write access to data without hashing. <br>
 - Hash Table (WIP) – Optimized for high-speed lookups <br>
 - Binary Tree (WIP) – Fundamental structure for hierarchical data organization <br>
 - AVL Tree (WIP) – Self-balancing binary search tree for efficient operations <br>
