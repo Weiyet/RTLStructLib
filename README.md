@@ -1,5 +1,5 @@
-# RTL Data Structure
-Highly optimized, synthesizable data structures for hardware design
+# RTLStructLib
+Highly optimized, synthesizable data structures module/IP library for hardware design
 
 ### Overview
 RTL Data Structure is an open-source project providing a collection of synthesizable data structures implemented at the Register-Transfer Level (RTL). These modules are designed for high performance, scalability, and ease of integration into digital systems, serving as a standard library for FPGA and ASIC engineers.
