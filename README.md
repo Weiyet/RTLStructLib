@@ -31,6 +31,7 @@ This project is licensed under the MIT License – see the LICENSE file for deta
 ```
 sudo apt install make git iverilog yosys gtkwave
 pip install cocotb
+pip install cocotb-bus
 ```
 
 1️⃣ Clone the Repository <br> 
