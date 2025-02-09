@@ -57,13 +57,15 @@ make sim
 cd <Data Structure>/tb/cocotb
 make 
 ```
-
 3️⃣ Synthesis and Netlist simulation
 ```
 make synth
 ```
-
-4️⃣ Integrate to your project
+4️⃣ To view VCD waveform 
+```
+gtkwave <waveform.vcd>
+```
+5️⃣ Integrate to your project
 Include file list <Data structure>/src/rtl_list.f to your simulation or project.
 
 ### Work in Progress/Future Works 🚀
