@@ -1,6 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 06/25/2024 08:46:52 PM
+// Last Update: 02/09/2025 10:37:12 PM
 // Module Name: singly_linked_list
 // Description: Supported Operation 
 //             0. Read_Addr(addr_in) -> data_out 
@@ -40,13 +41,16 @@ module singly_linked_list #(
     localparam NODE_WIDTH = $clog2(MAX_NODE);
     localparam ADDR_NULL = (MAX_NODE+1);
 
-    typedef struct {  
-        reg [DATA_WIDTH-1:0] data; // RAM
-        reg [ADDR_WIDTH-1:0] next_node_addr; // RAM 
-        reg valid; // Register
-    } node_st;
+    // typedef struct packed {  
+    //     reg [DATA_WIDTH-1:0] data; // RAM
+    //     reg [ADDR_WIDTH-1:0] next_node_addr; // RAM 
+    //     reg valid; // Register
+    // } node_st;
     
-    node_st node [0:MAX_NODE-1];
+    //node_st [0:MAX_NODE-1] node ;
+    reg [DATA_WIDTH-1:0] node_data[0:MAX_NODE-1];
+    reg node_valid [0:MAX_NODE-1];
+    reg [ADDR_WIDTH-1:0] node_next_node_addr [0:MAX_NODE-1];
     wire [MAX_NODE-1:0] valid_bits;
     wire op_is_read; 
     wire op_is_insert_at_addr;
@@ -61,8 +65,8 @@ module singly_linked_list #(
     reg [NODE_WIDTH-1:0] index;
     reg [ADDR_WIDTH-1:0] cur_ptr; 
     reg [ADDR_WIDTH-1:0] pre_ptr; 
-    reg [ADDR_WIDTH-1:0] head; // Addr of head
-    reg [ADDR_WIDTH-1:0] tail; // Addr of tail
+    // reg [ADDR_WIDTH-1:0] head; // Addr of head
+    // reg [ADDR_WIDTH-1:0] tail; // Addr of tail
     reg [2:0] state;
     reg [2:0] next_state;
     reg wr_req;
@@ -89,27 +93,39 @@ module singly_linked_list #(
     assign op_is_delete_by_index = op[2:0] == 3'd7 & op_start; 
     assign op_is_delete_by_addr = op[2:0] == 3'd3 & op_start;
 
-    always @ (posedge clk or posedge rst) begin
-        if (rst) begin
-            for (int i = 0; i < MAX_NODE; i = i+1) begin
-                node[i].data <= {DATA_WIDTH{1'b0}};
-                node[i].valid <= 1'b0;
+    
+    generate
+    genvar i;
+    for (i = 0; i < MAX_NODE; i = i+1) begin : gen_node_data_n_valid
+        always @ (posedge clk or posedge rst) begin
+            if (rst) begin
+                node_data[i] <= {DATA_WIDTH{1'b0}};
+                node_valid[i] <= 1'b0;
+                node_next_node_addr[i] <= ADDR_NULL;
+            end else if (target_idx == i) begin
+                if(wr_req & state != INSERT_STG1 & target_idx != ADDR_NULL) begin  // ADDR_NULL is invalid addr 
+                    node_data[i] <= data_in; 
+                    node_valid[i] <= valid_wr;
+                end 
             end
-        end else if (wr_req & state != INSERT_STG1 & target_idx != ADDR_NULL) begin  
-            node[target_idx[NODE_WIDTH-1:0]].data <= data_in; 
-            node[target_idx[NODE_WIDTH-1:0]].valid <= valid_wr;
-        end 
+        end
     end
+    endgenerate
 
-    always @ (posedge clk or posedge rst) begin
-        if (rst) begin
-            for (int i = 0; i < MAX_NODE; i = i+1) begin
-                node[i].next_node_addr <= ADDR_NULL;
-            end
-        end else if (wr_req & next_node_addr_idx != ADDR_NULL) begin  
-            node[next_node_addr_idx[NODE_WIDTH-1:0]].next_node_addr <= next_node_addr_in;
-        end 
+    generate
+    genvar j;
+    for (j = 0; j < MAX_NODE; j = j+1) begin : gen_node_next_node_addr
+        always @ (posedge clk or posedge rst) begin
+            if (rst) begin
+                node_next_node_addr[j] <= ADDR_NULL;
+            end else if (next_node_addr_idx == j) begin
+                if (wr_req & next_node_addr_idx != ADDR_NULL) begin    // ADDR_NULL is invalid addr 
+                    node_next_node_addr[j] <= next_node_addr_in;
+                end
+            end 
+        end
     end
+    endgenerate 
 
     assign addr_match = op_is_insert_at_index ? addr_in == (index + 1) :
                         op_is_delete_by_index ? addr_in == index :
@@ -136,6 +152,7 @@ module singly_linked_list #(
         next_node_addr_idx <= {ADDR_WIDTH{1'b0}};
         fault <= 1'b0;
         next_state <= IDLE;
+        valid_wr <= 1'b0;
         case(state)
             IDLE: begin
                 if (op_is_insert_at_addr | op_is_insert_at_index) begin
@@ -259,6 +276,9 @@ module singly_linked_list #(
                 op_done <= 1'b1;
                 next_state <= IDLE;
             end 
+            DEFAULT: begin
+                next_state <= IDLE;
+            end
        endcase
     end
 
@@ -278,9 +298,9 @@ module singly_linked_list #(
             valid_rd_buf <= 1'b0;
             next_addr_rd_buf= {ADDR_WIDTH{1'b0}};
         end else if (rd_req) begin
-            data_rd_buf <=  node[target_idx].data;
-            valid_rd_buf <= node[target_idx].valid;
-            next_addr_rd_buf <= node[target_idx].next_node_addr;
+            data_rd_buf <=  node_data[target_idx];
+            valid_rd_buf <= node_valid[target_idx];
+            next_addr_rd_buf <= node_next_node_addr[target_idx];
         end
     end
     
@@ -289,8 +309,8 @@ module singly_linked_list #(
             data_out <= {DATA_WIDTH{1'b0}};
             next_node_addr <= {ADDR_WIDTH{1'b0}};
         end else if (op_is_read & (next_state == EXECUTE)) begin
-            data_out <=  node[target_idx].data;
-            next_node_addr <= node[target_idx].next_node_addr;
+            data_out <=  node_data[target_idx];
+            next_node_addr <= node_next_node_addr[target_idx];
         end
     end
    
@@ -308,11 +328,11 @@ module singly_linked_list #(
         end
     end
 
-    genvar j;
+    genvar k;
     // Status
     generate 
-        for (j = 0; j < MAX_NODE; j = j+1) begin
-            assign valid_bits[j] = node[j].valid;
+        for (k = 0; k < MAX_NODE; k = k+1) begin
+            assign valid_bits[k] = node_valid[k]; //node_valid;
         end
     endgenerate
 
@@ -359,11 +379,13 @@ module singly_linked_list #(
         end
     end
     
-    function bit [ADDR_WIDTH-1:0] find_next_ptr(input bit [MAX_NODE-1:0] valid_bits);
-        int done;
+    function integer find_next_ptr(input integer valid_bits);
+        integer done;
+        integer i;
+        i = 0;
         done = 0;
         find_next_ptr = 0;
-        for (int i = 0; i < MAX_NODE ; i = i+1) begin
+        for (i = 0; i < MAX_NODE ; i = i+1) begin
             if(valid_bits[i] == 0 & done == 0) begin
                 find_next_ptr = i; 
                 done = 1;
