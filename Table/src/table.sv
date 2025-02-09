@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 31/01/2025 12:46:52 PM
-// Last Update Date: 01/02/2024 10:37:12 AM
+// Last Update Date: 09/02/2024 15:40 PM
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Module Name: table
 // Description: Table Structure that supports multiple read, write oepration simultaneously 
@@ -17,14 +17,14 @@ module table_top #(
 )(
     input wire clk,
     input wire rst, 
-    input wire wr_en,
+    input wire [INPUT_RATE-1:0] wr_en,
     input wire rd_en,
     input wire [INPUT_RATE*$clog2(TABLE_SIZE)-1:0] index_wr,
     input wire [OUTPUT_RATE*$clog2(TABLE_SIZE)-1:0] index_rd,
     input wire [INPUT_RATE*DATA_WIDTH-1:0] data_wr,
     output reg [OUTPUT_RATE*DATA_WIDTH-1:0] data_rd
 );
-    localparam INDEX_WIDTH = $clog2(TABLE_SIZE-1);
+    localparam INDEX_WIDTH = $clog2(TABLE_SIZE);
     reg [DATA_WIDTH-1:0] data_stored [TABLE_SIZE];
     integer i;
 
@@ -33,9 +33,10 @@ module table_top #(
             for (i=0; i<TABLE_SIZE; i=i+1) begin
                 data_stored[i] = 'b0;
             end
-        end else if (wr_en) begin
+        end else begin
             for (i=1; i<=INPUT_RATE; i=i+1) begin
-                data_stored[index_wr[i*INDEX_WIDTH-1 -:INDEX_WIDTH]] = data_wr[i*DATA_WIDTH-1 -:DATA_WIDTH];
+                if (wr_en[i-1])
+                    data_stored[index_wr[i*INDEX_WIDTH-1 -:INDEX_WIDTH]] = data_wr[i*DATA_WIDTH-1 -:DATA_WIDTH];
             end            
         end
     end
