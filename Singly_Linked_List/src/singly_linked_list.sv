@@ -276,7 +276,7 @@ module singly_linked_list #(
                 op_done <= 1'b1;
                 next_state <= IDLE;
             end 
-            DEFAULT: begin
+            default: begin
                 next_state <= IDLE;
             end
        endcase
