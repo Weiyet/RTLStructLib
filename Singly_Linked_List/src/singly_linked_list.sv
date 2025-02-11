@@ -1,6 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 06/25/2024 08:46:52 PM
+// Last Update: 02/11/2025 11:01 PM
 // Module Name: singly_linked_list
 // Description: Supported Operation 
 //             0. Read_Addr(addr_in) -> data_out 
@@ -140,8 +141,10 @@ module singly_linked_list #(
         wr_req <= 1'b0;
         target_idx <= {ADDR_WIDTH{1'b0}};
         next_node_addr_idx <= {ADDR_WIDTH{1'b0}};
+        next_node_addr_in <= {ADDR_WIDTH{1'b0}};
         fault <= 1'b0;
         next_state <= IDLE;
+        valid_wr <= 1'b0;
         case(state)
             IDLE: begin
                 if (op_is_insert_at_addr | op_is_insert_at_index) begin
