@@ -1,6 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 09/22/2024 01:42:52 PM
+// Last Update: 02/12/2025 09:50 PM
 // Module Name: tb
 // Description: Supported Operation 
 //             0. Read_Addr(addr_in) -> data_out 
@@ -92,16 +93,43 @@ integer i = 0;
 integer next;
 int dummy[$];
 int temp[$];
+integer temp2;
+
+task find_first_index (input integer addr); // input integer list[$], ref integer addr[$]); icarus does not support ref.
+begin
+   temp = {};
+   for (integer i = 0; i < linked_list_addr.size(); i = i + 1) begin
+      if(addr == linked_list_addr[i]) begin
+         temp.push_back(i);
+         $display("%0t Addr %0d found at Index %0d", $realtime, addr, i);
+      end
+   end
+end
+endtask
+
+task find_first_index2 (input integer addr); //avoid temp output conflict
+begin
+   dummy = {};
+   for (integer i = 0; i < linked_list_addr.size(); i = i + 1) begin
+      if(addr == linked_list_addr[i]) begin
+         dummy.push_back(i);
+         $display("%0t Addr %0d found at Index %0d", $realtime, addr, i);
+      end
+   end
+end
+endtask
 
 task find_next_addr (output integer next_addr);
 begin
    next_addr = 0;
    for (int i = 0; i < (linked_list_addr.size()+1); i = i + 1) begin
       dummy = {};
-      dummy = (linked_list_addr.find_first_index(x) with ( x == i ));
+      //dummy = (linked_list_addr.find_first_index(x) with ( x == i )); //icarus does not support in built find_first_index method, use workaround below
+      find_first_index2(i);
       if(dummy.size() == 0) begin
         next_addr = i;
-        break; 
+        //break; //icarus does not support break statement. use workaround below
+         i = linked_list_addr.size()+1;
       end
    end
 end
@@ -148,8 +176,8 @@ begin
        err_cnt = err_cnt + 1; 
     end
     op_start = 0;
-    $display("%0t Complete OP_Read from front %0d times, linked_list_exp = %p", $realtime,count,linked_list_exp[0:(linked_list_exp.size()-1)]); 
-    $display("%0t Complete OP_Read from front %0d times, linked_list_addr = %p\n", $realtime,count,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+    //$display("%0t Complete OP_Read from front %0d times, linked_list_exp = %p", $realtime,count,linked_list_exp[0:(linked_list_exp.size()-1)]); 
+    //$display("%0t Complete OP_Read from front %0d times, linked_list_addr = %p\n", $realtime,count,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
 endtask  
 
@@ -194,8 +222,8 @@ begin
        err_cnt = err_cnt + 1; 
     end
     op_start = 0;
-    $display("%0t Complete OP_Read from back %0d times, linked_list_exp = %p", $realtime,count,linked_list_exp[0:(linked_list_exp.size()-1)]); 
-    $display("%0t Complete OP_Read from back %0d times, linked_list_addr = %p\n", $realtime,count,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+   // $display("%0t Complete OP_Read from back %0d times, linked_list_exp = %p", $realtime,count,linked_list_exp[0:(linked_list_exp.size()-1)]); 
+   // $display("%0t Complete OP_Read from back %0d times, linked_list_addr = %p\n", $realtime,count,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
 endtask  
 
@@ -219,7 +247,7 @@ begin
            linked_list_exp.delete(j);  
            linked_list_addr.delete(j); 
            found = 1;      
-           break;
+           //break; //icarus does not support break statement, use workaround below
         end
     end
     if (!found) begin
@@ -236,8 +264,8 @@ begin
        end
     end
     op_start = 0;
-    $display("%0t Complete OP_Delete_Value %0d value, linked_list_exp = %p", $realtime,value,linked_list_exp[0:(linked_list_exp.size()-1)]); 
-    $display("%0t Complete OP_Delete_Value %0d value, linked_list_addr = %p\n", $realtime,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+   // $display("%0t Complete OP_Delete_Value %0d value, linked_list_exp = %p", $realtime,value,linked_list_exp[0:(linked_list_exp.size()-1)]); 
+   // $display("%0t Complete OP_Delete_Value %0d value, linked_list_addr = %p\n", $realtime,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
 endtask  
     
@@ -266,16 +294,16 @@ begin
           err_cnt = err_cnt + 1;
        end
        $display("%0t Data %0d at Front is Deleted", $realtime, linked_list_exp[0]);
-       linked_list_exp.pop_front();
-       linked_list_addr.pop_front();
+       temp2 = linked_list_exp.pop_front();
+       temp2 = linked_list_addr.pop_front();
     end else if ( addr >= ADDR_NULL) begin
        if(fault) begin
           $error("%0t fault flag is asserted incorrectly",$realtime);
           err_cnt = err_cnt + 1;
        end
        $display("%0t Data %0d at Back is Deleted", $realtime, linked_list_exp[linked_list_exp.size()]);
-       linked_list_exp.pop_back();
-       linked_list_addr.pop_back();
+       temp2 = linked_list_exp.pop_back();
+       temp2 = linked_list_addr.pop_back();
     end else begin
        if(fault) begin
           $error("%0t fault flag is asserted incorrectly",$realtime);
@@ -297,8 +325,8 @@ begin
        err_cnt = err_cnt + 1;
     end
     op_start = 0;
-    $display("%0t Complete OP_Delete_At_Index %0d index, linked_list_exp = %p", $realtime,addr,linked_list_exp[0:(linked_list_exp.size()-1)]); 
-    $display("%0t Complete OP_Delete_At_Index %0d index, linked_list_addr = %p\n", $realtime,addr,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+   // $display("%0t Complete OP_Delete_At_Index %0d index, linked_list_exp = %p", $realtime,addr,linked_list_exp[0:(linked_list_exp.size()-1)]); 
+   // $display("%0t Complete OP_Delete_At_Index %0d index, linked_list_addr = %p\n", $realtime,addr,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
 endtask  
 
@@ -361,8 +389,8 @@ begin
        err_cnt = err_cnt + 1; 
     end
     op_start = 0;
-    $display("%0t Complete OP_Insert_At_Index %0d index %0d value, linked_list_exp = %p", $realtime,addr,value,linked_list_exp[0:(linked_list_exp.size()-1)]); 
-    $display("%0t Complete OP_Insert_At_Index %0d index %0d value, linked_list_addr = %p\n", $realtime,addr,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+   // $display("%0t Complete OP_Insert_At_Index %0d index %0d value, linked_list_exp = %p", $realtime,addr,value,linked_list_exp[0:(linked_list_exp.size()-1)]); 
+   // $display("%0t Complete OP_Insert_At_Index %0d index %0d value, linked_list_addr = %p\n", $realtime,addr,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
 endtask
 
@@ -392,21 +420,22 @@ begin
           err_cnt = err_cnt + 1;
        end
        $display("%0t Data %0d at Front is Deleted", $realtime, linked_list_exp[0]);
-       linked_list_exp.pop_front();
-       linked_list_addr.pop_front();
+       temp2 = linked_list_exp.pop_front();
+       temp2 = linked_list_addr.pop_front();
     end else if ( addr >= ADDR_NULL) begin
        if(fault) begin
           $error("%0t fault flag is asserted incorrectly",$realtime);
           err_cnt = err_cnt + 1;
        end
        $display("%0t Data %0d at Back is Deleted", $realtime, linked_list_exp[linked_list_exp.size()]);
-       linked_list_exp.pop_back();
-       linked_list_addr.pop_back();
+       temp2 = linked_list_exp.pop_back();
+       temp2 = linked_list_addr.pop_back();
     end else begin
        temp = {};
-       for (int j  = 0; j <1; j = j+1) begin
-         temp = (linked_list_addr.find_first_index(x) with (x == addr));
-       end
+       //for (int j  = 0; j <1; j = j+1) begin
+       //  temp = (linked_list_addr.find_first_index(x) with (x == addr)); //icarus does not support in built find_first_index method, use workaround below
+       //end
+       find_first_index(addr);
        if (temp.size() == 0) begin
            if(!fault) begin
               $error("%0t Fault flag is not asserted",$realtime);
@@ -432,8 +461,8 @@ begin
        err_cnt = err_cnt + 1;
     end
     op_start = 0;
-    $display("%0t Complete OP_Delete_At_Addr %0d addr, linked_list_exp = %p", $realtime,addr,linked_list_exp[0:(linked_list_exp.size()-1)]); 
-    $display("%0t Complete OP_Delete_At_Addr %0d addr, linked_list_addr = %p\n", $realtime,addr,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+   // $display("%0t Complete OP_Delete_At_Addr %0d addr, linked_list_exp = %p", $realtime,addr,linked_list_exp[0:(linked_list_exp.size()-1)]); 
+   // $display("%0t Complete OP_Delete_At_Addr %0d addr, linked_list_addr = %p\n", $realtime,addr,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
 endtask  
 
@@ -477,9 +506,10 @@ begin
        $display("%0t Data Written to Back : %0d",$realtime,value);
     end else begin
        temp = {};
-       for (int j  = 0; j <1; j = j+1) begin
-         temp = (linked_list_addr.find_first_index(x) with (x == addr));
-       end
+       //for (int j  = 0; j <1; j = j+1) begin
+       //  temp = (linked_list_addr.find_first_index(x) with (x == addr)); // icarus does not support in built find_first_index method, use workaround below
+       //end
+       find_first_index(addr);
        if (temp.size() == 0) begin
            if(!fault) begin
               $error("%0t Fault flag is not asserted",$realtime);
@@ -506,8 +536,8 @@ begin
        err_cnt = err_cnt + 1; 
     end
     op_start = 0;
-    $display("%0t Complete OP_Insert_At_Addr %0d addr %0d value, linked_list_exp = %p", $realtime,addr,value,linked_list_exp[0:(linked_list_exp.size()-1)]);
-    $display("%0t Complete OP_Insert_At_Addr %0d addr %0d value, linked_list_addr = %p\n", $realtime,addr,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+   // $display("%0t Complete OP_Insert_At_Addr %0d addr %0d value, linked_list_exp = %p", $realtime,addr,value,linked_list_exp[0:(linked_list_exp.size()-1)]);
+   // $display("%0t Complete OP_Insert_At_Addr %0d addr %0d value, linked_list_addr = %p\n", $realtime,addr,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
 endtask
 
