@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 07/11/2024 10:23:52 PM
-// Last Update: 02/11/2025 11:03 PM
+// Last Update: 02/16/2026 11:21 PM
 // Module Name: tb
 // Description: Supported Operation 
 //             0. Read_Addr(addr_in) -> data_out 
@@ -93,6 +93,18 @@ integer dummy[$];
 integer temp[$];
 integer temp2;
 
+task list_print_contents();
+   $write("%0t linked_list_exp = ", $realtime);
+   for (int i = 0; i < linked_list_exp.size(); i = i + 1) begin
+      $write("%0d ", linked_list_exp[i]);
+   end
+   $write("\n%0t linked_list_addr = ", $realtime);
+   for (int i = 0; i < linked_list_addr.size(); i = i + 1) begin
+      $write("%0d ", linked_list_addr[i]);
+   end
+   $write("\n");
+endtask 
+
 task find_first_index (input integer addr); // input integer list[$], ref integer addr[$]); icarus does not support ref.
 begin
    temp = {};
@@ -144,7 +156,7 @@ begin
     op_start = 1;
     addr_in = head;
     i = i + 1;
-    while (i<count) begin  
+    while (i<=count) begin  
         @(posedge (clk));
         #1 
         if(op_done) begin
@@ -161,20 +173,15 @@ begin
                $error("%0t Data read: %0d, Data Exp: %0d", $realtime, data_out, linked_list_exp[i-1]);
                err_cnt = err_cnt + 1; 
             end
+            if(i == count) begin
+               op_start = 0;
+            end 
             addr_in = next_node_addr;
             i = i + 1;
         end
     end
-    @(posedge (clk))
-    #1 
-    wait(op_done)
-    if(data_out == linked_list_exp[linked_list_exp.size()-1]) begin
-       $display("%0t Data read: %0d",$realtime, data_out);
-    end else begin
-       $error("%0t Data read: %0d, Data Exp: %0d", $realtime, data_out, linked_list_exp[-1]);
-       err_cnt = err_cnt + 1; 
-    end
-    op_start = 0;
+    // icarus does not support %p concanation, so used workaround below.
+    list_print_contents();
     //$display("%0t Complete OP_Read %0d times, linked_list_exp = %p", $realtime,count,linked_list_exp[0:(linked_list_exp.size()-1)]); 
     //$display("%0t Complete OP_Read %0d times, linked_list_addr = %p\n", $realtime,count,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
@@ -218,6 +225,8 @@ begin
        end
     end
     op_start = 0;
+    // icarus does not support %p concanation, so used workaround below.
+    list_print_contents();
     //$display("%0t Complete OP_Delete_Value %0d value, linked_list_exp = %p", $realtime,value,linked_list_exp[0:(linked_list_exp.size()-1)]); 
     //$display("%0t Complete OP_Delete_Value %0d value, linked_list_addr = %p\n", $realtime,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
@@ -279,6 +288,8 @@ begin
        err_cnt = err_cnt + 1;
     end
     op_start = 0;
+    // icarus does not support %p concanation, so used workaround below.
+    list_print_contents();
     //$display("%0t Complete OP_Delete_At_Index %0d index, linked_list_exp = %p", $realtime,addr,linked_list_exp[0:(linked_list_exp.size()-1)]); 
     //$display("%0t Complete OP_Delete_At_Index %0d index, linked_list_addr = %p\n", $realtime,addr,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
@@ -343,6 +354,8 @@ begin
        err_cnt = err_cnt + 1; 
     end
     op_start = 0;
+    // icarus does not support %p concanation, so used workaround below.
+    list_print_contents();
     //$display("%0t Complete OP_Insert_At_Index %0d index %0d value, linked_list_exp = %p", $realtime,addr,value,linked_list_exp[0:(linked_list_exp.size()-1)]); 
     //$display("%0t Complete OP_Insert_At_Index %0d index %0d value, linked_list_addr = %p\n", $realtime,addr,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
@@ -415,6 +428,8 @@ begin
        err_cnt = err_cnt + 1;
     end
     op_start = 0;
+    // icarus does not support %p concanation, so used workaround below.
+    list_print_contents();
     //$display("%0t Complete OP_Delete_At_Addr %0d addr, linked_list_exp = %p", $realtime,addr,linked_list_exp[0:(linked_list_exp.size()-1)]); 
     //$display("%0t Complete OP_Delete_At_Addr %0d addr, linked_list_addr = %p\n", $realtime,addr,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
@@ -490,6 +505,8 @@ begin
        err_cnt = err_cnt + 1; 
     end
     op_start = 0;
+    // icarus does not support %p concanation, so used workaround below.
+    list_print_contents();
     //$display("%0t Complete OP_Insert_At_Addr %0d addr %0d value, linked_list_exp = %p", $realtime,addr,value,linked_list_exp[0:(linked_list_exp.size()-1)]);
     //$display("%0t Complete OP_Insert_At_Addr %0d addr %0d value, linked_list_addr = %p\n", $realtime,addr,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
