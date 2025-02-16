@@ -9,7 +9,7 @@ By using these pre-built RTL modules, engineers can accelerate development, redu
 ✅ Synthesizable, Optimized, Modular and Reusable <br>
 ✅ Fully parameterized <br>
 ✅ Comprehensive verification sequence and testbench <br>
-✅ Verification Agent <br>
+✅ Verification Agent (WIP) <br>
 ✅ Open-source and community-driven <br>
 
 ### Supported Data Structures
