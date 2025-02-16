@@ -18,6 +18,7 @@ By using these pre-built RTL modules, engineers can accelerate development, redu
 - Singly Linked List – Efficient memory utilization, dynamic data handling <br>
 - Doubly Linked List – Bi-directional traversal support <br>
 - Table - Indexed storage mechanism, similar to a register file, enabling rapid direct access and simultaneous read write access to data without hashing. <br>
+- Circular Linked List （WIP） 
 - Hash Table (WIP) – Optimized for high-speed lookups <br>
 - Binary Tree (WIP) – Fundamental structure for hierarchical data organization <br>
 - AVL Tree (WIP) – Self-balancing binary search tree for efficient operations <br>
