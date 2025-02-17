@@ -66,8 +66,12 @@ class singly_linked_list:
                 return i
 
     def insert_by_addr(self, addr, data):
-        self.linked_list_value.insert(self.linked_list_addr.index(addr), data)
-        self.linked_list_addr.insert(self.linked_list_addr.index(addr), self.find_next_addr())
+        if(addr == -1):
+            self.linked_list_value.append(data)
+            self.linked_list_addr.append(self.find_next_addr())
+        else:
+            self.linked_list_value.insert(self.linked_list_addr.index(addr), data)
+            self.linked_list_addr.insert(self.linked_list_addr.index(addr), self.find_next_addr())
 
     def insert_by_index(self, index, data):
         if(index == -1):
@@ -175,12 +179,6 @@ async def delete_at_index(dut, list_exp, index):
             err_cnt += 1
         cocotb.log.info("Data %0d at Front is Deleted_by_Index", list_exp.linked_list_value[0])
         list_exp.remove(0)
-    elif (index >= ADDR_NULL):
-        if(dut.fault.value == 1):
-            cocotb.log.error("Fault flag is asserted incorrectly")
-            err_cnt += 1
-        cocotb.log.info("Data %0d at End is Deleted_by_Index", list_exp.linked_list_value[-1])
-        list_exp.remove(-1)
     else:
         if(dut.fault.value == 1):
             cocotb.log.error("Fault flag is asserted incorrectly")
@@ -237,6 +235,107 @@ async def insert_at_index(dut, list_exp, index, data):
     dut.op_start.value = 0
     list_exp.print_content()
 
+async def delete_at_addr (dut, list_exp, addr):
+    global err_cnt
+    cocotb.log.info("OP_Delete_At_Addr %0d addr", addr)
+    await RisingEdge(dut.clk)
+    await Timer (1, units = 'ns')
+    dut.op.value = OP_Delete_At_Addr
+    dut.addr_in.value = addr
+    dut.op_start.value = 1
+    pre_head = dut.head.value
+
+    await RisingEdge(dut.op_done)
+    await Timer (1, units = 'ns')
+    if (addr >= ADDR_NULL):
+        if(dut.fault.value == 1):
+            cocotb.log.info("Data delete out of bound, fault flag is asserted correctly")
+        else:
+            cocotb.log.error("Data delete out of bound, fault flag is not asserted")
+            err_cnt += 1
+    elif (addr == pre_head):
+        if(dut.fault.value == 1):
+            cocotb.log.error("Fault flag is asserted incorrectly")
+            err_cnt += 1
+        cocotb.log.info("Data %0d at Front is Deleted_by_Addr", list_exp.linked_list_value[0])
+        list_exp.remove(0)
+    else:
+        if(addr not in list_exp.linked_list_addr):
+            if(dut.fault.value == 0):
+                cocotb.log.error("Fault flag is not asserted")
+                err_cnt += 1
+        else:
+            if(dut.fault.value == 1):
+                cocotb.log.error("Fault flag is asserted incorrectly")
+                err_cnt += 1
+            cocotb.log.info("Data %0d at Addr %0d is Inserted_by_Addr", list_exp.linked_list_value[list_exp.linked_list_addr.index(addr)], addr)
+            list_exp.delete_by_addr(addr)
+    if(len(list_exp.linked_list_value) == 0):
+        if(dut.empty.value == 1):
+            cocotb.log.info("Full flag is asserted correctly")
+        else:
+            cocotb.log.error("Full flag is not asserted")
+            err_cnt += 1
+    elif (dut.empty.value == 1):
+        cocotb.log.error("Full flag is asserted incorrectly")
+        err_cnt += 1
+    dut.op_start.value = 0
+    list_exp.print_content()
+
+async def insert_at_addr(dut, list_exp, addr, data):
+    global err_cnt
+    cocotb.log.info("OP_Insert_At_Addr %0d addr, %0d data", addr, data)
+    await RisingEdge(dut.clk)
+    await Timer (1, units = 'ns')
+    dut.op.value = OP_Insert_At_Addr
+    dut.addr_in.value = addr
+    dut.data_in.value = data
+    dut.op_start.value = 1
+    pre_head = dut.head.value
+
+    await RisingEdge(dut.op_done)
+    await Timer (1, units = 'ns')
+    if (len(list_exp.linked_list_value) >= MAX_NODE):
+        if(dut.fault.value == 1):
+            cocotb.log.info("Data insert out of bound, fault flag is asserted correctly")
+        else:
+            cocotb.log.error("Data insert out of bound, fault flag is not asserted")
+            err_cnt += 1
+    elif (addr >= ADDR_NULL):
+        if(dut.fault.value == 1):
+            cocotb.log.error("Fault flag is asserted incorrectly")
+            err_cnt += 1
+        list_exp.insert_by_addr(-1, data)
+        cocotb.log.info("Data %0d at End is Inserted_by_Addr", data)
+    elif (addr == pre_head):
+        if(dut.fault.value == 1):
+            cocotb.log.error("Fault flag is asserted incorrectly")
+            err_cnt += 1
+        list_exp.insert_by_addr(addr, data)
+        cocotb.log.info("Data %0d at Front is Inserted_by_Addr", data)
+    else:
+        if(addr not in list_exp.linked_list_addr):
+            if(dut.fault.value == 0):
+                cocotb.log.error("Fault flag is not asserted")
+                err_cnt += 1
+        else:
+            if(dut.fault.value == 1):
+                cocotb.log.error("Fault flag is asserted incorrectly")
+                err_cnt += 1
+            list_exp.insert_by_addr(addr, data)
+            cocotb.log.info("Data %0d at Addr %0d is Inserted_by_Addr", data, addr)
+    if(len(list_exp.linked_list_value) >= MAX_NODE):
+        if(dut.full.value == 1):
+            cocotb.log.info("Full flag is asserted correctly")
+        else:
+            cocotb.log.error("Full flag is not asserted")
+            err_cnt += 1
+    elif (dut.full.value == 1):
+        cocotb.log.error("Full flag is asserted incorrectly")
+        err_cnt += 1
+    dut.op_start.value = 0
+    list_exp.print_content()
+
 async def dut_init(dut):
     global DATA_WIDTH # DUT paramter
     global MAX_NODE # DUT paramter
@@ -257,11 +356,10 @@ async def dut_init(dut):
     await(Timer(100,'ns'))
 
 @cocotb.test()
-async def index_access_test(dut):
+async def index_op_test(dut):
     await dut_init(dut)
     list_exp = singly_linked_list(dut)
     cocotb.log.info("SEED NUMBER = %d",cocotb.RANDOM_SEED)
-    await dut_init(dut)
     await insert_at_index(dut,list_exp,0,3)
     await insert_at_index(dut,list_exp,0,0)
     await Timer(200, units = 'ns')
@@ -295,3 +393,38 @@ async def index_access_test(dut):
         cocotb.log.error("Errors count = %d",err_cnt)
         cocotb.result.test_fail()
 
+@cocotb.test()
+async def addr_op_test(dut):
+    await dut_init(dut)
+    list_exp = singly_linked_list(dut)
+    cocotb.log.info("SEED NUMBER = %d",cocotb.RANDOM_SEED)
+    await insert_at_addr(dut, list_exp, int(dut.head.value), 3)
+    await insert_at_addr(dut, list_exp, int(dut.head.value), 0)
+    await Timer(100, units='ns')
+    await insert_at_addr(dut, list_exp, int(dut.head.value), 5)
+    await insert_at_addr(dut, list_exp, int(dut.head.value), 6)
+    await insert_at_addr(dut, list_exp, list_exp.linked_list_addr[2], 7)
+    await insert_at_addr(dut, list_exp, int(dut.head.value), 3)
+    await insert_at_addr(dut, list_exp, int(dut.head.value), 4)
+    await insert_at_addr(dut, list_exp, ADDR_NULL, 3)
+    await insert_at_addr(dut, list_exp, ADDR_NULL, 4)
+    await insert_at_addr(dut, list_exp, ADDR_NULL, 1)
+    await insert_at_addr(dut, list_exp, 0, 3)
+    await Timer(200, units='ns')
+    await read_n(dut, list_exp, len(list_exp.linked_list_value))
+    await Timer(500, units='ns')
+    await delete_value(dut, list_exp, 7)
+    await delete_at_addr(dut, list_exp, 0)
+    await delete_at_addr(dut, list_exp, 0)
+    await delete_value(dut, list_exp, 2)
+    await delete_value(dut, list_exp, 4)
+    await delete_at_addr(dut, list_exp, 0)
+    await delete_at_addr(dut, list_exp, 7)
+    await delete_at_addr(dut, list_exp, dut.length.value - 1)
+    await delete_at_addr(dut, list_exp, dut.length.value - 1)
+    await delete_at_addr(dut, list_exp, 0)
+    await Timer(500, units='ns')
+
+    if (err_cnt > 0):
+        cocotb.log.error("Errors count = %d",err_cnt)
+        cocotb.result.test_fail()
