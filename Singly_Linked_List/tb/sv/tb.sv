@@ -1,6 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 07/11/2024 10:23:52 PM
+// Last Update: 02/18/2025 09:27 PM
 // Module Name: tb
 // Description: Supported Operation 
 //             0. Read_Addr(addr_in) -> data_out 
@@ -174,7 +175,17 @@ begin
             end
             if(i == count) begin
                op_start = 0;
-            end 
+            end else if ( (i-1) < linked_list_exp.size()-2) begin
+               if(next_node_addr != linked_list_addr[i]) begin
+                  $error("%0t Next Addr: %0d, Addr Exp: %0d", $realtime, next_node_addr, linked_list_addr[i]);
+                  err_cnt = err_cnt + 1; 
+               end
+            end else if ( (i-1) == linked_list_exp.size()-1) begin
+               if(next_node_addr != ADDR_NULL) begin
+                  $error("%0t Next Addr: %0d, Addr Exp: %0d", $realtime, next_node_addr, ADDR_NULL);
+                  err_cnt = err_cnt + 1; 
+               end
+            end
             addr_in = next_node_addr;
             i = i + 1;
         end
