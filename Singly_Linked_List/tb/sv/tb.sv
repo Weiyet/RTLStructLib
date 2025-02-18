@@ -1,7 +1,6 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 07/11/2024 10:23:52 PM
-// Last Update: 02/18/2025 08:43 PM
 // Module Name: tb
 // Description: Supported Operation 
 //             0. Read_Addr(addr_in) -> data_out 
@@ -363,6 +362,7 @@ begin
     addr_in = addr; 
     op_start = 1;
     pre_head = head;
+    pre_tail = tail;
 
     wait (op_done)
     #1 
@@ -381,6 +381,14 @@ begin
        $display("%0t Data %0d at Front is Deleted", $realtime, linked_list_exp[0]);
        temp2 = linked_list_exp.pop_front();
        temp2 = linked_list_addr.pop_front();
+   //  end else if ( addr == pre_tail ) begin
+   //     if(fault) begin
+   //        $error("%0t fault flag is asserted incorrectly",$realtime);
+   //        err_cnt = err_cnt + 1;
+   //     end
+   //     $display("%0t Data %0d at Back is Deleted", $realtime, linked_list_exp[0]);
+   //     temp2 = linked_list_exp.pop_back();
+   //     temp2 = linked_list_addr.pop_back();
     end else begin
        temp = {};
       //  for (int j  = 0; j <1; j = j+1) begin
@@ -395,7 +403,7 @@ begin
               $display("%0t Fault flag is asserted correctly",$realtime);
            end       
        end else begin
-          $display("%0t Data %0d at Addr %0d is Deleted", $realtime, linked_list_exp[dummy[0]],linked_list_addr[dummy[0]]);
+          $display("%0t Data %0d at Addr %0d is Deleted", $realtime, linked_list_exp[temp[0]],linked_list_addr[temp[0]]);
           linked_list_exp.delete(temp[0]);
           linked_list_addr.delete(temp[0]);
        end
@@ -430,6 +438,7 @@ begin
     data_in = value;
     op_start = 1; 
     pre_head = head;
+    pre_tail = tail;
     wait (op_done)
     #1 
     if(linked_list_exp.size() >= DUT_MAX_NODE) begin
@@ -448,6 +457,15 @@ begin
        find_next_addr(next);
        linked_list_addr.push_front(next);
        $display("%0t Data Written to Front : %0d",$realtime,value);
+    end else if( addr == pre_tail ) begin
+       if(fault) begin
+          $error("%0t Fault flag is asserted incorrectly",$realtime);
+          err_cnt = err_cnt + 1;
+       end 
+       linked_list_exp.insert(linked_list_exp.size()-1, value);
+       find_next_addr(next);
+       linked_list_addr.insert(linked_list_addr.size()-1, next);
+       $display("%0t Data Written to Back : %0d",$realtime,value);
     end else if ( addr >= ADDR_NULL ) begin
        if(fault) begin
           $error("%0t Fault flag is asserted incorrectly",$realtime);
@@ -528,6 +546,7 @@ begin
     delete_value(2);  
     delete_value(4);
     delete_at_index(0);
+    read_n(linked_list_exp.size());
     delete_at_index(7);
     delete_at_index(length-1);
     delete_at_index(length-1);
@@ -552,10 +571,10 @@ begin
     insert_at_addr(head,3);
     insert_at_addr(head,0);
     #100
-    insert_at_addr(head,5); 
+    insert_at_addr(0,5); 
     insert_at_addr(head,6);
     insert_at_addr(linked_list_addr[2],7);  
-    insert_at_addr(head,3); 
+    insert_at_addr(tail,3); 
     insert_at_addr(head,4);
     insert_at_addr(ADDR_NULL,3);
     insert_at_addr(ADDR_NULL,4);
@@ -569,10 +588,11 @@ begin
     delete_at_addr(head);
     delete_value(2);  
     delete_value(4);
+    read_n(linked_list_exp.size());
     delete_at_addr(head);
     delete_at_addr(7);
-    delete_at_addr(length-1);
-    delete_at_addr(length-1);
+    delete_at_addr(tail);
+    delete_at_addr(tail);
     delete_at_addr(0);        
     #500;
 end
