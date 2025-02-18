@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 07/11/2024 10:23:52 PM
-// Last Update: 02/17/2025 11:49 PM
+// Last Update: 02/18/2025 08:43 PM
 // Module Name: tb
 // Description: Supported Operation 
 //             0. Read_Addr(addr_in) -> data_out 
@@ -566,10 +566,10 @@ begin
     #500
     delete_value(7);
     delete_at_addr(0);
-    delete_at_addr(0);
+    delete_at_addr(head);
     delete_value(2);  
     delete_value(4);
-    delete_at_addr(0);
+    delete_at_addr(head);
     delete_at_addr(7);
     delete_at_addr(length-1);
     delete_at_addr(length-1);
