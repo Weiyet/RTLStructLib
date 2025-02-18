@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 07/11/2024 10:23:52 PM
-// Last Update: 02/18/2025 09:27 PM
+// Last Update: 02/18/2025 09:30 PM
 // Module Name: tb
 // Description: Supported Operation 
 //             0. Read_Addr(addr_in) -> data_out 
@@ -392,14 +392,14 @@ begin
        $display("%0t Data %0d at Front is Deleted", $realtime, linked_list_exp[0]);
        temp2 = linked_list_exp.pop_front();
        temp2 = linked_list_addr.pop_front();
-   //  end else if ( addr == pre_tail ) begin
-   //     if(fault) begin
-   //        $error("%0t fault flag is asserted incorrectly",$realtime);
-   //        err_cnt = err_cnt + 1;
-   //     end
-   //     $display("%0t Data %0d at Back is Deleted", $realtime, linked_list_exp[0]);
-   //     temp2 = linked_list_exp.pop_back();
-   //     temp2 = linked_list_addr.pop_back();
+    end else if ( addr == pre_tail ) begin
+       if(fault) begin
+          $error("%0t fault flag is asserted incorrectly",$realtime);
+          err_cnt = err_cnt + 1;
+       end
+       $display("%0t Data %0d at Back is Deleted", $realtime, linked_list_exp[0]);
+       temp2 = linked_list_exp.pop_back();
+       temp2 = linked_list_addr.pop_back();
     end else begin
        temp = {};
       //  for (int j  = 0; j <1; j = j+1) begin
