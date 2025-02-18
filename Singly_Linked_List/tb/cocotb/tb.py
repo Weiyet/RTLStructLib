@@ -243,7 +243,8 @@ async def delete_at_addr (dut, list_exp, addr):
     dut.op.value = OP_Delete_At_Addr
     dut.addr_in.value = addr
     dut.op_start.value = 1
-    pre_head = dut.head.value
+    pre_head = int(dut.head.value)
+    pre_tail = int(dut.tail.value)
 
     await RisingEdge(dut.op_done)
     await Timer (1, units = 'ns')
@@ -259,6 +260,12 @@ async def delete_at_addr (dut, list_exp, addr):
             err_cnt += 1
         cocotb.log.info("Data %0d at Front is Deleted_by_Addr", list_exp.linked_list_value[0])
         list_exp.remove(0)
+    elif (addr == pre_tail):
+        if(dut.fault.value == 1):
+            cocotb.log.error("Fault flag is asserted incorrectly")
+            err_cnt += 1
+        cocotb.log.info("Data %0d at Back is Deleted_by_Addr", list_exp.linked_list_value[0])
+        list_exp.remove(-1)
     else:
         if(addr not in list_exp.linked_list_addr):
             if(dut.fault.value == 0):
@@ -291,7 +298,8 @@ async def insert_at_addr(dut, list_exp, addr, data):
     dut.addr_in.value = addr
     dut.data_in.value = data
     dut.op_start.value = 1
-    pre_head = dut.head.value
+    pre_head = int(dut.head.value)
+    pre_tail = int(dut.tail.value)
 
     await RisingEdge(dut.op_done)
     await Timer (1, units = 'ns')
@@ -313,6 +321,12 @@ async def insert_at_addr(dut, list_exp, addr, data):
             err_cnt += 1
         list_exp.insert_by_addr(addr, data)
         cocotb.log.info("Data %0d at Front is Inserted_by_Addr", data)
+    elif (addr == pre_tail):
+        if(dut.fault.value == 1):
+            cocotb.log.error("Fault flag is asserted incorrectly")
+            err_cnt += 1
+        list_exp.insert_by_index(len(list_exp.linked_list_value)-1, data)
+        cocotb.log.info("Data %0d at End is Inserted_by_Addr", data)
     else:
         if(addr not in list_exp.linked_list_addr):
             if(dut.fault.value == 0):
@@ -404,9 +418,9 @@ async def addr_op_test(dut):
     await insert_at_addr(dut, list_exp, int(dut.head.value), 5)
     await insert_at_addr(dut, list_exp, int(dut.head.value), 6)
     await insert_at_addr(dut, list_exp, list_exp.linked_list_addr[2], 7)
-    await insert_at_addr(dut, list_exp, int(dut.head.value), 3)
+    await insert_at_addr(dut, list_exp, 0, 3)
     await insert_at_addr(dut, list_exp, int(dut.head.value), 4)
-    await insert_at_addr(dut, list_exp, ADDR_NULL, 3)
+    await insert_at_addr(dut, list_exp, int(dut.tail.value), 3)
     await insert_at_addr(dut, list_exp, ADDR_NULL, 4)
     await insert_at_addr(dut, list_exp, ADDR_NULL, 1)
     await insert_at_addr(dut, list_exp, 0, 3)
@@ -417,11 +431,12 @@ async def addr_op_test(dut):
     await delete_at_addr(dut, list_exp, 0)
     await delete_at_addr(dut, list_exp, 0)
     await delete_value(dut, list_exp, 2)
+    await read_n(dut, list_exp, len(list_exp.linked_list_value))
     await delete_value(dut, list_exp, 4)
     await delete_at_addr(dut, list_exp, 0)
     await delete_at_addr(dut, list_exp, 7)
-    await delete_at_addr(dut, list_exp, dut.length.value - 1)
-    await delete_at_addr(dut, list_exp, dut.length.value - 1)
+    await delete_at_addr(dut, list_exp, int(dut.head.value - 1))
+    await delete_at_addr(dut, list_exp, int(dut.tail.value - 1))
     await delete_at_addr(dut, list_exp, 0)
     await Timer(500, units='ns')
 
