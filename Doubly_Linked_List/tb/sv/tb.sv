@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 09/22/2024 01:42:52 PM
-// Last Update: 02/12/2025 09:50 PM
+// Last Update: 02/18/2025 11:40 PM 
 // Module Name: tb
 // Description: Supported Operation 
 //             0. Read_Addr(addr_in) -> data_out 
@@ -95,6 +95,19 @@ int dummy[$];
 int temp[$];
 integer temp2;
 
+
+task list_print_contents();
+   $write("%0t linked_list_exp = ", $realtime);
+   for (int i = 0; i < linked_list_exp.size(); i = i + 1) begin
+      $write("%0d ", linked_list_exp[i]);
+   end
+   $write("\n%0t linked_list_addr = ", $realtime);
+   for (int i = 0; i < linked_list_addr.size(); i = i + 1) begin
+      $write("%0d ", linked_list_addr[i]);
+   end
+   $write("\n");
+endtask 
+
 task find_first_index (input integer addr); // input integer list[$], ref integer addr[$]); icarus does not support ref.
 begin
    temp = {};
@@ -124,14 +137,15 @@ begin
    next_addr = 0;
    for (int i = 0; i < (linked_list_addr.size()+1); i = i + 1) begin
       dummy = {};
-      //dummy = (linked_list_addr.find_first_index(x) with ( x == i )); //icarus does not support in built find_first_index method, use workaround below
+      //dummy = (linked_list_addr.find_first_index(x) with ( x == i )); // icarus does not support built in find_first_index method, so used workaround below. 
       find_first_index2(i);
       if(dummy.size() == 0) begin
         next_addr = i;
-        //break; //icarus does not support break statement. use workaround below
-         i = linked_list_addr.size()+1;
+        //break;  //icarus does not support break statement, so used workaround below. 
+        i = linked_list_addr.size()+1; 
       end
    end
+   $display("%0t Next Addr = %0d", $realtime, next_addr);
 end
 endtask
 
@@ -145,7 +159,7 @@ begin
     op_start = 1;
     addr_in = head;
     i = i + 1;
-    while (i<count) begin  
+    while (i<=count) begin  
         @(posedge (clk));
         #1 
         if(op_done) begin
@@ -162,20 +176,42 @@ begin
                $error("%0t Data read: %0d, Data Exp: %0d", $realtime, data_out, linked_list_exp[i-1]);
                err_cnt = err_cnt + 1; 
             end
+            if(i == count) begin
+               op_start = 0;
+            end else if ( ((i-1) == 0) && ((i-1) < linked_list_exp.size()-2) ) begin
+               if(next_node_addr != linked_list_addr[i]) begin
+                  $error("%0t Next Addr: %0d, Addr Exp: %0d", $realtime, next_node_addr, linked_list_addr[i]);
+                  err_cnt = err_cnt + 1; 
+               end
+               if(pre_node_addr != ADDR_NULL) begin
+                  $error("%0t Pre Addr: %0d, Addr Exp: %0d", $realtime, pre_node_addr, ADDR_NULL);
+                  err_cnt = err_cnt + 1; 
+               end
+            end else if ( ((i-1) > 0) && ((i-1) < linked_list_exp.size()-2) ) begin
+               if(next_node_addr != linked_list_addr[i]) begin
+                  $error("%0t Next Addr: %0d, Addr Exp: %0d", $realtime, next_node_addr, linked_list_addr[i]);
+                  err_cnt = err_cnt + 1; 
+               end
+               if(pre_node_addr != linked_list_addr[i-2]) begin
+                  $error("%0t Pre Addr: %0d, Addr Exp: %0d", $realtime, pre_node_addr, linked_list_addr[i-2]);
+                  err_cnt = err_cnt + 1; 
+               end
+            end else if ( (i-1) == linked_list_exp.size()-1) begin
+               if(next_node_addr != ADDR_NULL) begin
+                  $error("%0t Next Addr: %0d, Addr Exp: %0d", $realtime, next_node_addr, ADDR_NULL);
+                  err_cnt = err_cnt + 1; 
+               end
+               if(pre_node_addr != linked_list_addr[i-2]) begin
+                  $error("%0t Pre Addr: %0d, Addr Exp: %0d", $realtime, pre_node_addr, linked_list_addr[i-2]);
+                  err_cnt = err_cnt + 1; 
+               end
+            end
             addr_in = next_node_addr;
             i = i + 1;
         end
     end
-    @(posedge (clk))
-    #1 
-    wait(op_done)
-    if(data_out == linked_list_exp[linked_list_exp.size()-1]) begin
-       $display("%0t Data read: %0d",$realtime, data_out);
-    end else begin
-       $error("%0t Data read: %0d, Data Exp: %0d", $realtime, data_out, linked_list_exp[-1]);
-       err_cnt = err_cnt + 1; 
-    end
-    op_start = 0;
+    // icarus does not support %p concanation, so used workaround below.
+    list_print_contents();
     //$display("%0t Complete OP_Read from front %0d times, linked_list_exp = %p", $realtime,count,linked_list_exp[0:(linked_list_exp.size()-1)]); 
     //$display("%0t Complete OP_Read from front %0d times, linked_list_addr = %p\n", $realtime,count,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
@@ -191,7 +227,7 @@ begin
     op_start = 1;
     addr_in = tail;
     i = i + 1;
-    while (i<count) begin  
+    while (i<=count) begin  
         @(posedge (clk));
         #1 
         if(op_done) begin
@@ -205,23 +241,45 @@ begin
             end else if(data_out == linked_list_exp[linked_list_exp.size()-1-(i-1)]) begin
                $display("%0t Data read: %0d",$realtime,data_out);
             end else begin
-               $error("%0t Data read: %0d, Data Exp: %0d", $realtime, data_out, linked_list_exp[linked_list_exp.size()-1-i-1]);
+               $error("%0t Data read: %0d, Data Exp: %0d", $realtime, data_out, linked_list_exp[linked_list_exp.size()-1-(i-1)]);
                err_cnt = err_cnt + 1; 
+            end
+            if(i == count) begin
+               op_start = 0;
+            end else if ( ((i-1) == 0) && ((i-1) < linked_list_exp.size()-2) ) begin
+               if(next_node_addr != ADDR_NULL) begin
+                  $error("%0t Next Addr: %0d, Addr Exp: %0d", $realtime, next_node_addr, ADDR_NULL);
+                  err_cnt = err_cnt + 1; 
+               end
+               if(pre_node_addr != linked_list_addr[linked_list_exp.size()-1-(i-2)]) begin
+                  $error("%0t Pre Addr: %0d, Addr Exp: %0d", $realtime, pre_node_addr, linked_list_addr[linked_list_exp.size()-1-(i-2)]);
+                  err_cnt = err_cnt + 1; 
+            end else if ( ((i-1) > 0) && ((i-1) < linked_list_exp.size()-2) ) begin
+               if(next_node_addr != linked_list_addr[linked_list_exp.size()-1-(i)]) begin
+                  $error("%0t Next Addr: %0d, Addr Exp: %0d", $realtime, next_node_addr, linked_list_addr[linked_list_exp.size()-1-(i)]);
+                  err_cnt = err_cnt + 1; 
+               end
+               if(pre_node_addr != linked_list_addr[linked_list_exp.size()-1-(i-2)]) begin
+                  $error("%0t Pre Addr: %0d, Addr Exp: %0d", $realtime, pre_node_addr, linked_list_addr[linked_list_exp.size()-1-(i-2)]);
+                  err_cnt = err_cnt + 1; 
+               end
+            end else if ( (i-1) == linked_list_exp.size()-1) begin
+               if(next_node_addr != linked_list_addr[linked_list_exp.size()-1-(i)]) begin
+                  $error("%0t Next Addr: %0d, Addr Exp: %0d", $realtime, next_node_addr, linked_list_addr[linked_list_exp.size()-1-(i)]);
+                  err_cnt = err_cnt + 1; 
+               end
+               if(pre_node_addr != ADDR_NULL) begin
+                  $error("%0t Pre Addr: %0d, Addr Exp: %0d", $realtime, pre_node_addr, ADDR_NULL);
+                  err_cnt = err_cnt + 1; 
+               end
+            end
             end
             addr_in = pre_node_addr;
             i = i + 1;
         end
     end
-    @(posedge (clk))
-    #1 
-    wait(op_done)
-    if(data_out == linked_list_exp[0]) begin
-       $display("%0t Data read: %0d",$realtime, data_out);
-    end else begin
-       $error("%0t Data read: %0d, Data Exp: %0d", $realtime, data_out, linked_list_exp[0]);
-       err_cnt = err_cnt + 1; 
-    end
-    op_start = 0;
+   // icarus does not support %p concanation, so used workaround below.
+   list_print_contents();
    // $display("%0t Complete OP_Read from back %0d times, linked_list_exp = %p", $realtime,count,linked_list_exp[0:(linked_list_exp.size()-1)]); 
    // $display("%0t Complete OP_Read from back %0d times, linked_list_addr = %p\n", $realtime,count,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
@@ -247,7 +305,8 @@ begin
            linked_list_exp.delete(j);  
            linked_list_addr.delete(j); 
            found = 1;      
-           //break; //icarus does not support break statement, use workaround below
+           //break;
+           j = linked_list_exp.size() + 1; 
         end
     end
     if (!found) begin
@@ -264,8 +323,10 @@ begin
        end
     end
     op_start = 0;
-   // $display("%0t Complete OP_Delete_Value %0d value, linked_list_exp = %p", $realtime,value,linked_list_exp[0:(linked_list_exp.size()-1)]); 
-   // $display("%0t Complete OP_Delete_Value %0d value, linked_list_addr = %p\n", $realtime,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+    // icarus does not support %p concanation, so used workaround below.
+    list_print_contents();
+    //$display("%0t Complete OP_Delete_Value %0d value, linked_list_exp = %p", $realtime,value,linked_list_exp[0:(linked_list_exp.size()-1)]); 
+    //$display("%0t Complete OP_Delete_Value %0d value, linked_list_addr = %p\n", $realtime,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
 endtask  
     
@@ -296,14 +357,6 @@ begin
        $display("%0t Data %0d at Front is Deleted", $realtime, linked_list_exp[0]);
        temp2 = linked_list_exp.pop_front();
        temp2 = linked_list_addr.pop_front();
-    end else if ( addr >= ADDR_NULL) begin
-       if(fault) begin
-          $error("%0t fault flag is asserted incorrectly",$realtime);
-          err_cnt = err_cnt + 1;
-       end
-       $display("%0t Data %0d at Back is Deleted", $realtime, linked_list_exp[linked_list_exp.size()]);
-       temp2 = linked_list_exp.pop_back();
-       temp2 = linked_list_addr.pop_back();
     end else begin
        if(fault) begin
           $error("%0t fault flag is asserted incorrectly",$realtime);
@@ -325,8 +378,10 @@ begin
        err_cnt = err_cnt + 1;
     end
     op_start = 0;
-   // $display("%0t Complete OP_Delete_At_Index %0d index, linked_list_exp = %p", $realtime,addr,linked_list_exp[0:(linked_list_exp.size()-1)]); 
-   // $display("%0t Complete OP_Delete_At_Index %0d index, linked_list_addr = %p\n", $realtime,addr,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+    // icarus does not support %p concanation, so used workaround below.
+    list_print_contents();
+    //$display("%0t Complete OP_Delete_At_Index %0d index, linked_list_exp = %p", $realtime,addr,linked_list_exp[0:(linked_list_exp.size()-1)]); 
+    //$display("%0t Complete OP_Delete_At_Index %0d index, linked_list_addr = %p\n", $realtime,addr,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
 endtask  
 
@@ -389,8 +444,10 @@ begin
        err_cnt = err_cnt + 1; 
     end
     op_start = 0;
-   // $display("%0t Complete OP_Insert_At_Index %0d index %0d value, linked_list_exp = %p", $realtime,addr,value,linked_list_exp[0:(linked_list_exp.size()-1)]); 
-   // $display("%0t Complete OP_Insert_At_Index %0d index %0d value, linked_list_addr = %p\n", $realtime,addr,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+    // icarus does not support %p concanation, so used workaround below.
+    list_print_contents();
+    //$display("%0t Complete OP_Insert_At_Index %0d index %0d value, linked_list_exp = %p", $realtime,addr,value,linked_list_exp[0:(linked_list_exp.size()-1)]); 
+    //$display("%0t Complete OP_Insert_At_Index %0d index %0d value, linked_list_addr = %p\n", $realtime,addr,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
 endtask
 
@@ -404,6 +461,7 @@ begin
     addr_in = addr; 
     op_start = 1;
     pre_head = head;
+    pre_tail = tail;
 
     wait (op_done)
     #1 
@@ -422,19 +480,19 @@ begin
        $display("%0t Data %0d at Front is Deleted", $realtime, linked_list_exp[0]);
        temp2 = linked_list_exp.pop_front();
        temp2 = linked_list_addr.pop_front();
-    end else if ( addr >= ADDR_NULL) begin
+    end else if ( addr == pre_tail ) begin
        if(fault) begin
           $error("%0t fault flag is asserted incorrectly",$realtime);
           err_cnt = err_cnt + 1;
        end
-       $display("%0t Data %0d at Back is Deleted", $realtime, linked_list_exp[linked_list_exp.size()]);
+       $display("%0t Data %0d at Back is Deleted", $realtime, linked_list_exp[0]);
        temp2 = linked_list_exp.pop_back();
        temp2 = linked_list_addr.pop_back();
     end else begin
        temp = {};
-       //for (int j  = 0; j <1; j = j+1) begin
-       //  temp = (linked_list_addr.find_first_index(x) with (x == addr)); //icarus does not support in built find_first_index method, use workaround below
-       //end
+      //  for (int j  = 0; j <1; j = j+1) begin
+      //    temp = (linked_list_addr.find_first_index(x) with (x == addr));
+      //  end
        find_first_index(addr);
        if (temp.size() == 0) begin
            if(!fault) begin
@@ -444,7 +502,7 @@ begin
               $display("%0t Fault flag is asserted correctly",$realtime);
            end       
        end else begin
-          $display("%0t Data %0d at Addr %0d is Deleted", $realtime, linked_list_exp[dummy[0]],linked_list_addr[dummy[0]]);
+          $display("%0t Data %0d at Addr %0d is Deleted", $realtime, linked_list_exp[temp[0]],linked_list_addr[temp[0]]);
           linked_list_exp.delete(temp[0]);
           linked_list_addr.delete(temp[0]);
        end
@@ -461,8 +519,10 @@ begin
        err_cnt = err_cnt + 1;
     end
     op_start = 0;
-   // $display("%0t Complete OP_Delete_At_Addr %0d addr, linked_list_exp = %p", $realtime,addr,linked_list_exp[0:(linked_list_exp.size()-1)]); 
-   // $display("%0t Complete OP_Delete_At_Addr %0d addr, linked_list_addr = %p\n", $realtime,addr,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+    // icarus does not support %p concanation, so used workaround below.
+    list_print_contents();
+    //$display("%0t Complete OP_Delete_At_Addr %0d addr, linked_list_exp = %p", $realtime,addr,linked_list_exp[0:(linked_list_exp.size()-1)]); 
+    //$display("%0t Complete OP_Delete_At_Addr %0d addr, linked_list_addr = %p\n", $realtime,addr,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
 endtask  
 
@@ -477,6 +537,7 @@ begin
     data_in = value;
     op_start = 1; 
     pre_head = head;
+    pre_tail = tail;
     wait (op_done)
     #1 
     if(linked_list_exp.size() >= DUT_MAX_NODE) begin
@@ -495,6 +556,15 @@ begin
        find_next_addr(next);
        linked_list_addr.push_front(next);
        $display("%0t Data Written to Front : %0d",$realtime,value);
+    end else if( addr == pre_tail ) begin
+       if(fault) begin
+          $error("%0t Fault flag is asserted incorrectly",$realtime);
+          err_cnt = err_cnt + 1;
+       end 
+       linked_list_exp.insert(linked_list_exp.size()-1, value);
+       find_next_addr(next);
+       linked_list_addr.insert(linked_list_addr.size()-1, next);
+       $display("%0t Data Written to Back : %0d",$realtime,value);
     end else if ( addr >= ADDR_NULL ) begin
        if(fault) begin
           $error("%0t Fault flag is asserted incorrectly",$realtime);
@@ -506,9 +576,9 @@ begin
        $display("%0t Data Written to Back : %0d",$realtime,value);
     end else begin
        temp = {};
-       //for (int j  = 0; j <1; j = j+1) begin
-       //  temp = (linked_list_addr.find_first_index(x) with (x == addr)); // icarus does not support in built find_first_index method, use workaround below
-       //end
+      //  for (int j  = 0; j <1; j = j+1) begin
+      //    temp = (linked_list_addr.find_first_index(x) with (x == addr));
+      //  end
        find_first_index(addr);
        if (temp.size() == 0) begin
            if(!fault) begin
@@ -536,8 +606,10 @@ begin
        err_cnt = err_cnt + 1; 
     end
     op_start = 0;
-   // $display("%0t Complete OP_Insert_At_Addr %0d addr %0d value, linked_list_exp = %p", $realtime,addr,value,linked_list_exp[0:(linked_list_exp.size()-1)]);
-   // $display("%0t Complete OP_Insert_At_Addr %0d addr %0d value, linked_list_addr = %p\n", $realtime,addr,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
+    // icarus does not support %p concanation, so used workaround below.
+    list_print_contents();
+    //$display("%0t Complete OP_Insert_At_Addr %0d addr %0d value, linked_list_exp = %p", $realtime,addr,value,linked_list_exp[0:(linked_list_exp.size()-1)]);
+    //$display("%0t Complete OP_Insert_At_Addr %0d addr %0d value, linked_list_addr = %p\n", $realtime,addr,value,linked_list_addr[0:(linked_list_addr.size()-1)]); 
 end
 endtask
 
@@ -562,17 +634,20 @@ begin
     insert_at_index(2,4);
     insert_at_index(ADDR_NULL,3);
     insert_at_index(ADDR_NULL,4);
+    read_n_back(linked_list_exp.size());
     insert_at_index(ADDR_NULL,1);
     insert_at_index(0,3);
     #200
-    read_n_back(linked_list_exp.size());
-    #500;
+    read_n_front(linked_list_exp.size());
+    #500
     delete_value(7);
     delete_at_index(0);
+    read_n_back(linked_list_exp.size());
     delete_at_index(0);
     delete_value(2);  
     delete_value(4);
     delete_at_index(0);
+    read_n_front(linked_list_exp.size());
     delete_at_index(7);
     delete_at_index(length-1);
     delete_at_index(length-1);
@@ -597,11 +672,12 @@ begin
     insert_at_addr(head,3);
     insert_at_addr(head,0);
     #100
-    insert_at_addr(head,5); 
+    insert_at_addr(0,5); 
     insert_at_addr(head,6);
     insert_at_addr(linked_list_addr[2],7);  
-    insert_at_addr(head,3); 
+    insert_at_addr(tail,3); 
     insert_at_addr(head,4);
+    read_n_back(linked_list_exp.size());
     insert_at_addr(ADDR_NULL,3);
     insert_at_addr(ADDR_NULL,4);
     insert_at_addr(ADDR_NULL,1);
@@ -609,15 +685,19 @@ begin
     #200
     read_n_front(linked_list_exp.size());
     #500
-    delete_value(7);
+    delete_value(7); // FIXME need debug 
+    read_n_front(linked_list_exp.size());
     delete_at_addr(0);
-    delete_at_addr(0);
+    delete_at_addr(head);
     delete_value(2);  
+    read_n_front(linked_list_exp.size());
+    read_n_back(linked_list_exp.size());
     delete_value(4);
-    delete_at_addr(0);
+    read_n_front(linked_list_exp.size());
+    delete_at_addr(head);
     delete_at_addr(7);
-    delete_at_addr(length-1);
-    delete_at_addr(length-1);
+    delete_at_addr(tail);
+    delete_at_addr(tail);
     delete_at_addr(0);        
     #500;
 end
