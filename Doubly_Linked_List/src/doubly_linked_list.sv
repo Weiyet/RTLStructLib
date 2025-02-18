@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 09/10/2024 08:46:52 PM
-// Last Update: 02/13/2025 09:45 PM
+// Last Update: 02/18/2025 11:37 PM
 // Module Name: doubly_linked_list
 // Description: Supported Operation 
 //             0. Read_Addr(addr_in) -> data_out 
@@ -300,6 +300,9 @@ module doubly_linked_list #(
                     // update next_node_addr of pre pos to next pos
                     next_node_addr_idx <= pre_ptr; 
                     next_node_addr_in <= next_addr_rd_buf;
+                    // update pre_node_addr of next pos to pre pos
+                    pre_node_addr_idx <= next_addr_rd_buf; 
+                    pre_node_addr_in <= pre_ptr;
                     next_state <= EXECUTE;    
                 end else if (index >= (length - 1)) begin
                     next_state <= FAULT; 
