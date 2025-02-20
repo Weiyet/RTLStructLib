@@ -81,13 +81,3 @@ table_top #(
 - No protection against simultaneous read/write to same location
 - Write operations take precedence in case of conflicts
 
-## Author
-Wei Yet Ng  
-[LinkedIn Profile](https://www.linkedin.com/in/wei-yet-ng-065485119/)
-
-## Version History
-- Created: January 31, 2025
-- Last Updated: February 09, 2024
-
-## License
-[Specify license information here]
