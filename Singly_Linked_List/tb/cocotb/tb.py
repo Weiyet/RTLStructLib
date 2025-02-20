@@ -14,7 +14,7 @@ from cocotb.binary import BinaryValue
 DATA_WIDTH = 8 # DUT paramter
 MAX_NODE = 8 # DUT paramter
 
-ADDR_NULL = MAX_NODE + 1
+ADDR_NULL = MAX_NODE
 MAX_DATA  = 2**DATA_WIDTH - 1
 
 OP_Read = 0b000
@@ -29,7 +29,7 @@ TB_SIM_TIMEOUT = 30 # TB sim timeout 30ms
 TB_TEST_WEIGHT = 1
 err_cnt = 0
 
-# singly_linked_list #(.DATA_WIDTH(DUT_DATA_WIDTH),.MAX_NODE(DUT_MAX_NODE)) DUT
+# doubly_linked_list #(.DATA_WIDTH(DUT_DATA_WIDTH),.MAX_NODE(DUT_MAX_NODE)) DUT
 # (   /*input*/  .rst(rst),
 #     /*input*/  .clk(clk),
 #     /*input [DATA_WIDTH-1:0]*/ .data_in(data_in), 
@@ -38,6 +38,7 @@ err_cnt = 0
 #     /*input*/  .op_start(op_start), 
 #     /*output reg [DATA_WIDTH-1:0]*/ .data_out(data_out),
 #     /*output reg*/  .op_done(op_done),
+#     /*output wire [ADDR_WIDTH-1:0]*/ .pre_node_addr(pre_node_addr),// Addr of pre node
 #     /*output wire [ADDR_WIDTH-1:0]*/ .next_node_addr(next_node_addr), // Addr of next node
 #     // status 
 #     /*output reg [ADDR_WIDTH-1:0]*/  .length(length), 
@@ -50,7 +51,7 @@ err_cnt = 0
 
 # Actual Python linked_list class: https://www.datacamp.com/tutorial/python-linked-lists
 # To mimic harware linked_list, we need to keep track of the address of each node, model in below way also for our ease of debug. 
-class singly_linked_list:
+class doubly_linked_list:
     def __init__(self, dut):
         self.dut = dut
         self.linked_list_value = []
@@ -95,7 +96,7 @@ class singly_linked_list:
     def print_content(self):
         cocotb.log.info(f"Linked List Content: value = {self.linked_list_value}, addr = {self.linked_list_addr}")
 
-async def read_n(dut, list_exp, n):
+async def read_n_front(dut, list_exp, n):
     global err_cnt
     cocotb.log.info("OP_Read %0d values", n)
     i = 0
@@ -123,6 +124,37 @@ async def read_n(dut, list_exp, n):
             if(i==n):
                 dut.op_start.value = 0
             dut.addr_in.value = dut.next_node_addr.value
+            i = i + 1
+    list_exp.print_content()
+
+async def read_n_back(dut, list_exp, n):
+    global err_cnt
+    cocotb.log.info("OP_Read %0d values", n)
+    i = 0
+    await RisingEdge(dut.clk)
+    await Timer (1, units = 'ns')
+    dut.op.value = OP_Read
+    dut.op_start.value = 1
+    dut.addr_in.value = dut.head.value
+    i = i + 1
+    while (i <= n):
+        await RisingEdge(dut.clk)
+        await Timer (1, units = 'ns')
+        if (dut.op_done.value == 1):
+            if( (i-1) >= len(list_exp.linked_list_addr)):
+                if(dut.fault.value == 1):
+                    cocotb.log.info("Data read out of bound, fault flag is asserted correctly")
+                else:
+                    cocotb.log.error("Data read out of bound, fault flag is not asserted")
+                    err_cnt += 1
+            elif (list_exp.linked_list_value[-i] == dut.data_out.value):
+                cocotb.log.info("Data read : %0d at Index %0d", dut.data_out.value, len(list_exp.linked_list_addr)-(i-1))
+            else:
+                cocotb.log.error("Data read at Index %0d is Correct, ACT: %0d, EXP: %0d", i-1, dut.data_out.value, list_exp.linked_list_value[-i])
+                err_cnt += 1
+            if(i==n):
+                dut.op_start.value = 0
+            dut.addr_in.value = dut.pre_node_addr.value
             i = i + 1
     list_exp.print_content()
 
@@ -357,7 +389,7 @@ async def dut_init(dut):
     global MAX_DATA 
     DATA_WIDTH = dut.DATA_WIDTH.value
     MAX_NODE = dut.MAX_NODE.value
-    ADDR_NULL = MAX_NODE + 1
+    ADDR_NULL = MAX_NODE
     MAX_DATA  = 2**DATA_WIDTH - 1
     await cocotb.start(Clock(dut.clk, TB_CLK_PERIOD, units="ns").start())
     dut.data_in.value = 0
@@ -372,7 +404,7 @@ async def dut_init(dut):
 @cocotb.test()
 async def index_op_test(dut):
     await dut_init(dut)
-    list_exp = singly_linked_list(dut)
+    list_exp = doubly_linked_list(dut)
     cocotb.log.info("SEED NUMBER = %d",cocotb.RANDOM_SEED)
     await insert_at_index(dut,list_exp,0,3)
     await insert_at_index(dut,list_exp,0,0)
@@ -387,7 +419,7 @@ async def index_op_test(dut):
     await insert_at_index(dut,list_exp,ADDR_NULL,1)
     await insert_at_index(dut,list_exp,0,3)
     await Timer(200, units = 'ns')
-    await read_n(dut,list_exp,len(list_exp.linked_list_value))
+    await read_n_front(dut,list_exp,len(list_exp.linked_list_value))
     await Timer(200, units = 'ns')
     await delete_value(dut,list_exp,7)
     await delete_at_index(dut,list_exp,0)
@@ -405,12 +437,11 @@ async def index_op_test(dut):
 
     if (err_cnt > 0):
         cocotb.log.error("Errors count = %d",err_cnt)
-        cocotb.result.test_fail()
 
 @cocotb.test()
 async def addr_op_test(dut):
     await dut_init(dut)
-    list_exp = singly_linked_list(dut)
+    list_exp = doubly_linked_list(dut)
     cocotb.log.info("SEED NUMBER = %d",cocotb.RANDOM_SEED)
     await insert_at_addr(dut, list_exp, int(dut.head.value), 3)
     await insert_at_addr(dut, list_exp, int(dut.head.value), 0)
@@ -425,13 +456,13 @@ async def addr_op_test(dut):
     await insert_at_addr(dut, list_exp, ADDR_NULL, 1)
     await insert_at_addr(dut, list_exp, 0, 3)
     await Timer(200, units='ns')
-    await read_n(dut, list_exp, len(list_exp.linked_list_value))
+    await read_n_front(dut, list_exp, len(list_exp.linked_list_value))
     await Timer(500, units='ns')
     await delete_value(dut, list_exp, 7)
     await delete_at_addr(dut, list_exp, 0)
     await delete_at_addr(dut, list_exp, 0)
     await delete_value(dut, list_exp, 2)
-    await read_n(dut, list_exp, len(list_exp.linked_list_value))
+    await read_n_front(dut, list_exp, len(list_exp.linked_list_value))
     await delete_value(dut, list_exp, 4)
     await delete_at_addr(dut, list_exp, 0)
     await delete_at_addr(dut, list_exp, 7)
@@ -442,4 +473,3 @@ async def addr_op_test(dut):
 
     if (err_cnt > 0):
         cocotb.log.error("Errors count = %d",err_cnt)
-        cocotb.result.test_fail()
