@@ -1,7 +1,6 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 09/22/2024 01:42:52 PM
-// Last Update: 02/18/2025 11:40 PM 
 // Module Name: tb
 // Description: Supported Operation 
 //             0. Read_Addr(addr_in) -> data_out 
@@ -27,7 +26,7 @@ module tb(
     localparam TB_TEST_WEIGHT = 1;
     localparam SIM_TIMEOUT = 500000;
 
-localparam ADDR_NULL = (DUT_MAX_NODE+1);
+localparam ADDR_NULL = (DUT_MAX_NODE);
 
 localparam OP_Read = 3'b000;
 localparam OP_Insert_At_Addr = 3'b001;
@@ -685,7 +684,7 @@ begin
     #200
     read_n_front(linked_list_exp.size());
     #500
-    delete_value(7); // FIXME need debug 
+    delete_value(7); 
     read_n_front(linked_list_exp.size());
     delete_at_addr(0);
     delete_at_addr(head);
@@ -697,7 +696,7 @@ begin
     delete_at_addr(head);
     delete_at_addr(7);
     delete_at_addr(tail);
-    delete_at_addr(tail);
+    delete_at_addr(tail-1); 
     delete_at_addr(0);        
     #500;
 end
