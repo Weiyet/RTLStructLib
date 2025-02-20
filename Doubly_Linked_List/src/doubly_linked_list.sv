@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 09/10/2024 08:46:52 PM
-// Last Update: 02/18/2025 11:37 PM
+// Last Update: 02/20/2025 10:17 PM
 // Module Name: doubly_linked_list
 // Description: Supported Operation 
 //             0. Read_Addr(addr_in) -> data_out 
@@ -40,7 +40,7 @@ module doubly_linked_list #(
 
     localparam ADDR_WIDTH = $clog2(MAX_NODE+1); // Reserve {ADDR_WIDTH(1'b1)} as NULL/INVALID ADDR.
     localparam NODE_WIDTH = $clog2(MAX_NODE);
-    localparam ADDR_NULL = (MAX_NODE+1);
+    localparam ADDR_NULL = (MAX_NODE);
 
     // yosys does not support sv typedef
     // typedef struct {  
