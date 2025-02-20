@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 07/11/2024 10:23:52 PM
-// Last Update: 02/18/2025 09:30 PM
+// Last Update: 02/20/2025 10:01 PM
 // Module Name: tb
 // Description: Supported Operation 
 //             0. Read_Addr(addr_in) -> data_out 
@@ -27,7 +27,7 @@ module tb(
     localparam TB_TEST_WEIGHT = 1;
     localparam SIM_TIMEOUT = 500000;
 
-localparam ADDR_NULL = (DUT_MAX_NODE+1);
+localparam ADDR_NULL = (DUT_MAX_NODE);
 
 localparam OP_Read = 3'b000;
 localparam OP_Insert_At_Addr = 3'b001;
