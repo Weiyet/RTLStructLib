@@ -121,4 +121,36 @@ doubly_linked_list #(
     .empty(list_empty),
     .fault(error_signal)
 );
+```
+## Reset Behavior
+
+On assertion of reset:
+- All nodes are invalidated
+- Head and tail pointers set to NULL
+- Length cleared to zero
+- All node data cleared
+- All status signals deasserted
+
+## Implementation Notes
+
+1. **Memory Organization**:
+   - Next node pointers stored separately
+   - Valid bits for node tracking
+
+2. **Address Handling**:
+   - NULL address = MAX_NODE
+   - Valid addresses: 0 to (MAX_NODE-1)
+
+3. **Error Conditions**:
+   - List full during insertion
+   - List empty during deletion/read
+   - Invalid address/index
+   - Address overflow
+
+## Limitations
+
+- Fixed maximum size defined by MAX_NODE
+- Sequential search for operations
+- Single operation at a time
+- No concurrent access support
 
