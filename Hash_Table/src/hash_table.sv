@@ -1,303 +1,128 @@
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Create Date: 18/04/2025 1:15 AM
+// Last Update: 18/04/2025 1:15 AM
+// Module Name: Hash Table
+// Description: Support coliision method of Chaining and Hash Algorithm Modulus
+// Additional Comments: .
+// 
+//////////////////////////////////////////////////////////////////////////////////
+
 module hash_table #(
     parameter KEY_WIDTH = 32,
     parameter VALUE_WIDTH = 32,
-    parameter TABLE_SIZE = 64,  // Must be power of 2
-    parameter COLLISION_METHOD = "LINEAR_PROBE",  // "LINEAR_PROBE" or "CHAINING"
-    parameter HASH_ALGORITHM = "FNV1A"  // "FNV1A" or "SHA1"
+    parameter TOTAL_ENTRY = 64,  // Total index of the hash table
+    parameter CHAINING_SIZE = 4, // Number of chains for SINGLE_CYCLE_CHAINING and MULTI_STAGE_CHAINING only
+    parameter COLLISION_METHOD = "MULTI_STAGE_CHAINING",  // "MULTI_STAGE_CHAINING", "LINEAR_PROBING" 
+    parameter HASH_ALGORITHM = "MODULUS"  // "MODULUS", "SHA1", "FNV1A"
 )(
+
     input wire clk,
     input wire rst,
-    
-    // Write interface
-    input wire wr_en,
-    input wire [KEY_WIDTH-1:0] wr_key,
-    input wire [VALUE_WIDTH-1:0] wr_value,
-    output reg wr_done,
-    output reg wr_collision,
-    
-    // Read interface
-    input wire rd_en,
-    input wire [KEY_WIDTH-1:0] rd_key,
-    output reg [VALUE_WIDTH-1:0] rd_value,
-    output reg rd_valid,
-    output reg rd_miss,
-    
-    // Deletion interface
-    input wire del_en,
-    input wire [KEY_WIDTH-1:0] del_key,
-    output reg del_done,
-    
-    // Status
-    output wire [15:0] filled_entries,
-    output wire [15:0] collision_count
+    input wire [KEY_WIDTH-1:0] key_in,
+    input wire [VALUE_WIDTH-1:0] value_in,
+    input wire [1:0] op_sel, // 00: Insert, 01: Delete, 10: Search
+    input wire op_en,
+    output reg [VALUE_WIDTH-1:0] value_out,
+    output reg op_done,
+    output reg op_error, // FULL when insert FAIL, KEY_NOT_FOUND when delete or search FAIL
+    output reg [$clog2(CHAINING_SIZE)-1:0] collision_count 
 );
 
-    // Hash table parameters
-    localparam INDEX_WIDTH = $clog2(TABLE_SIZE);
-    
-    // Hash table storage
-    reg [KEY_WIDTH-1:0] keys [TABLE_SIZE-1:0];
-    reg [VALUE_WIDTH-1:0] values [TABLE_SIZE-1:0];
-    reg valid [TABLE_SIZE-1:0];  // Entry is valid
-    reg tomb [TABLE_SIZE-1:0];   // Tombstone marker for deleted entries
-    
-    // Counters for statistics
-    reg [15:0] entry_count;
-    reg [15:0] collisions;
-    
-    assign filled_entries = entry_count;
-    assign collision_count = collisions;
-    
-    // FNV-1a hash function
-    function [31:0] fnv1a_hash;
-        input [KEY_WIDTH-1:0] key;
-        reg [31:0] hash;
-        integer i;
-        begin
-            hash = 32'h811c9dc5; // FNV offset basis
-            for (i = 0; i < KEY_WIDTH; i = i + 8) begin
-                hash = hash ^ key[i +: 8];
-                hash = hash * 32'h01000193; // FNV prime
-            end
-            fnv1a_hash = hash;
-        end
-    endfunction
-    
-    // Simplified SHA-1 hash function for hardware
-    // This is a hardware-friendly approximation of SHA-1's mixing function
-    function [31:0] sha1_hash;
-        input [KEY_WIDTH-1:0] key;
-        reg [31:0] h0, h1, h2, h3, h4;
-        reg [31:0] a, b, c, d, e, f, k, temp;
-        integer i;
-        begin
-            // Initialize hash values
-            h0 = 32'h67452301;
-            h1 = 32'hEFCDAB89;
-            h2 = 32'h98BADCFE;
-            h3 = 32'h10325476;
-            h4 = 32'hC3D2E1F0;
-            
-            // Process key in blocks - simplified for hardware implementation
-            a = h0; b = h1; c = h2; d = h3; e = h4;
-            
-            // Process words - we'll do just a few rounds as a simplification
-            for (i = 0; i < 4; i = i + 1) begin
-                if (i < KEY_WIDTH/32) begin
-                    // Extract 32-bit word from key
-                    temp = (i < KEY_WIDTH/32) ? key[i*32 +: 32] : 32'h0;
-                    
-                    // Different operations for different rounds
-                    case (i % 4)
-                        0: begin 
-                            f = (b & c) | ((~b) & d);
-                            k = 32'h5A827999;
-                        end
-                        1: begin 
-                            f = b ^ c ^ d;
-                            k = 32'h6ED9EBA1;
-                        end
-                        2: begin 
-                            f = (b & c) | (b & d) | (c & d);
-                            k = 32'h8F1BBCDC;
-                        end
-                        3: begin 
-                            f = b ^ c ^ d;
-                            k = 32'hCA62C1D6;
-                        end
-                    endcase
-                    
-                    // SHA-1 main calculation - simplified
-                    temp = ((a << 5) | (a >> 27)) + f + e + k + temp;
-                    e = d;
-                    d = c;
-                    c = (b << 30) | (b >> 2);
-                    b = a;
-                    a = temp;
-                end
-            end
-            
-            // Final hash result
-            h0 = h0 + a;
-            h1 = h1 + b;
-            h2 = h2 + c;
-            h3 = h3 + d;
-            h4 = h4 + e;
-            
-            // Return h0 as the hash value
-            sha1_hash = h0 ^ h1;
-        end
-    endfunction
-    
+    parameter CHAINING_SIZE_WIDTH = $clog2(CHAINING_SIZE); 
+    parameter INDEX_WIDTH = $clog2(TOTAL_ENTRY);
+
+    reg [KEY_WIDTH*CHAINING_SIZE-1:0] hash_key_stored [0:INDEX_WIDTH-1];
+    reg [DATA_WIDTH*CHAINING_SIZE-1:0] hash_value_stored [0:INDEX_WIDTH-1];
+    reg [CHAINING_SIZE_WIDTH-1:0] hash_chain_count [0:INDEX_WIDTH-1]; // for collision count
+    reg [CHAINING_SIZE_WIDTH-1:0] search_ptr; // for searching the key in the chain
+
     // Hash function selector
     function [INDEX_WIDTH-1:0] get_hash_index;
         input [KEY_WIDTH-1:0] key;
         reg [31:0] hash_value;
         begin
-            if (HASH_ALGORITHM == "SHA1")
-                hash_value = sha1_hash(key);
-            else // Default to FNV1A
-                hash_value = fnv1a_hash(key);
+            if (HASH_ALGORITHM == "MODULUS")
+                hash_value = key % TABLE_SIZE;
+            else // for future implentation of other hash algorithm
+                hash_value = key;
                 
             get_hash_index = hash_value[INDEX_WIDTH-1:0];
         end
     endfunction
-    
-    // Find slot for key (used for both read and write)
-    function [INDEX_WIDTH-1:0] find_slot;
-        input [KEY_WIDTH-1:0] key;
-        input operation;  // 0 for read, 1 for write
-        
-        reg [INDEX_WIDTH-1:0] index;
-        reg [INDEX_WIDTH-1:0] first_tombstone;
-        reg found_tombstone;
-        integer i;
-        begin
-            index = get_hash_index(key);
-            found_tombstone = 0;
-            first_tombstone = 0;
-            
-            if (COLLISION_METHOD == "LINEAR_PROBE") begin
-                // Linear probing
-                for (i = 0; i < TABLE_SIZE; i = i + 1) begin
-                    // Calculate probe index
-                    index = (get_hash_index(key) + i) & (TABLE_SIZE - 1);
-                    
-                    // For reading: return if key matches or empty slot found
-                    if (!operation) begin  // Read operation
-                        if (valid[index] && keys[index] == key) begin
-                            find_slot = index;
-                            return;
-                        end
-                        if (!valid[index] && !tomb[index]) begin
-                            find_slot = TABLE_SIZE;  // Not found
-                            return;
-                        end
-                    end
-                    // For writing: return if empty slot or matching key found
-                    else begin  // Write operation
-                        if (!valid[index]) begin
-                            // Use first tombstone if available, otherwise use this empty slot
-                            if (tomb[index] && !found_tombstone) begin
-                                first_tombstone = index;
-                                found_tombstone = 1;
-                            end
-                            if (!tomb[index]) begin
-                                find_slot = found_tombstone ? first_tombstone : index;
-                                return;
-                            end
-                        end
-                        if (valid[index] && keys[index] == key) begin
-                            find_slot = index;  // Update existing entry
-                            return;
-                        end
-                    end
-                end
-                
-                // If we get here during write and found a tombstone, use it
-                if (operation && found_tombstone) begin
-                    find_slot = first_tombstone;
-                    return;
-                end
-                
-                // Table full or key not found
-                find_slot = TABLE_SIZE;
-            end
-            else begin
-                // For other collision methods (not fully implemented here)
-                // This is a placeholder for future expansion
-                find_slot = index;
-            end
-        end
-    endfunction
-    
-    // Initialize hash table
-    integer j;
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            for (j = 0; j < TABLE_SIZE; j = j + 1) begin
-                valid[j] <= 0;
-                tomb[j] <= 0;
-                keys[j] <= 0;
-                values[j] <= 0;
-            end
-            entry_count <= 0;
-            collisions <= 0;
-            wr_done <= 0;
-            wr_collision <= 0;
-            rd_valid <= 0;
-            rd_miss <= 0;
-            del_done <= 0;
-        end
-        else begin
-            // Default values
-            wr_done <= 0;
-            rd_valid <= 0;
-            rd_miss <= 0;
-            del_done <= 0;
-            wr_collision <= 0;
-            
-            // Write operation
-            if (wr_en) begin
-                reg [INDEX_WIDTH-1:0] index;
-                index = find_slot(wr_key, 1);
-                
-                if (index < TABLE_SIZE) begin
-                    // If this is a new entry (not an update)
-                    if (!valid[index] || keys[index] != wr_key) begin
-                        if (index != get_hash_index(wr_key)) begin
-                            collisions <= collisions + 1;
-                            wr_collision <= 1;
-                        end
-                        
-                        if (!valid[index] && !tomb[index]) begin
-                            entry_count <= entry_count + 1;
-                        end
-                        else if (tomb[index]) begin
-                            tomb[index] <= 0;  // Clear tombstone
-                        end
-                    end
-                    
-                    // Write the key/value
-                    keys[index] <= wr_key;
-                    values[index] <= wr_value;
-                    valid[index] <= 1;
-                    wr_done <= 1;
-                end
-                else begin
-                    // Table full
-                    wr_collision <= 1;
-                end
-            end
-            
-            // Read operation
-            if (rd_en) begin
-                reg [INDEX_WIDTH-1:0] index;
-                index = find_slot(rd_key, 0);
-                
-                if (index < TABLE_SIZE && valid[index]) begin
-                    rd_value <= values[index];
-                    rd_valid <= 1;
-                end
-                else begin
-                    rd_miss <= 1;
-                    rd_value <= 0;
-                end
-            end
-            
-            // Delete operation
-            if (del_en) begin
-                reg [INDEX_WIDTH-1:0] index;
-                index = find_slot(del_key, 0);
-                
-                if (index < TABLE_SIZE && valid[index]) begin
-                    valid[index] <= 0;
-                    tomb[index] <= 1;  // Mark as tombstone for probing
-                    entry_count <= entry_count - 1;
-                end
-                
-                del_done <= 1;
-            end
-        end
+
+    // Collision resolution method
+    always @ (posedge clk, posedge rst) begin
+        if(rst)
+            current_state <= IDLE;
+        else if 
+            current_state <= next_state;
     end
+
+    always @ (*) begin
+        case(current_state)
+            IDLE: begin
+                if (op_en) begin
+                    case (op_sel)
+                        2'b00: next_state <= INSERT;
+                        2'b01: next_state <= SEARCH_KEY; //DELETE
+                        2'b10: next_state <= SEARCH_KEY; //SEARCH
+                        default: next_state <= IDLE;
+                    endcase
+                end else begin
+                    next_state <= IDLE;
+                end
+                search_ptr <= 0;
+                op_done <= 0;
+                op_error <= 0;
+                collision_count <= 0;
+            end
+
+            INSERT: begin
+                if (collision_count[get_hash_index(key_in)] < CHAINING_SIZE) begin
+                    // Insert logic here
+                    hash_key_stored[get_hash_index(key_in)][hash_chain_count[get_hash_index(key_in)]*KEY_WIDTH +: KEY_WIDTH] <= key_in;
+                    hash_value_stored[get_hash_index(key_in)][hash_chain_count[get_hash_index(key_in)]*DATA_WIDTH +: DATA_WIDTH] <= value_in;
+                    hash_chain_count[get_hash_index(key_in)] <= hash_chain_count[get_hash_index(key_in)] + 1;
+                    next_state <= IDLE;
+                end else begin
+                    op_done <= 1;
+                    op_error <= 1; // FULL error
+                    next_state <= IDLE;
+                end
+            end
+
+            SEARCH_KEY: begin
+                if(key_in == hash_key_stored[get_hash_index(key_in)][search_ptr*KEY_WIDTH +: KEY_WIDTH]) begin
+                    if(op == 2'b01) begin
+                        // Delete logic here
+                        // Remove key and value from hash table
+                        // Shift the rest of the chain
+                        hash_key_stored[get_hash_index(key_in)][KEY_WIDTH*CHAINING_SIZE-1 : search_ptr*KEY_WIDTH] <= hash_key_stored[get_hash_index(key_in)][KEY_WIDTH*CHAINING_SIZE-1 : search_ptr*KEY_WIDTH] << (search_ptr * KEY_WIDTH * (CHAINING_SIZE - search_ptr));
+                        hash_value_stored[get_hash_index(key_in)][DATA_WIDTH*CHAINING_SIZE-1 : search_ptr*DATA_WIDTH] <= hash_value_stored[get_hash_index(key_in)][DATA_WIDTH*CHAINING_SIZE-1 : search_ptr*DATA_WIDTH] << (search_ptr * KEY_WIDTH * (CHAINING_SIZE - search_ptr));
+                        hash_chain_count[get_hash_index(key_in)] <= hash_chain_count[get_hash_index(key_in)] - 1;
+                        op_done <= 1;
+                        op_error <= 0; // No error
+                    end else if (op == 2'b10) begin
+                        // Search logic here
+                        // Return the value associated with the key
+                        value_out <= hash_value_stored[get_hash_index(key_in)][search_ptr*DATA_WIDTH +: DATA_WIDTH];
+                        collision_count <= hash_chain_count[get_hash_index(key_in)];
+                        op_done <= 1;
+                        op_error <= 0; // No error
+                    end
+                end else if (search_ptr >= (hash_chain_count[get_hash_index(key_in)]-1)) begin
+                    collision_count <= CHAINING_SIZE;
+                    op_done <= 1;
+                    op_error <= 1; // KEY_NOT_FOUND error
+                    next_state <= IDLE;
+                end else begin
+                    search_ptr <= search_ptr + 1;
+                end
+            end
+
+            default: next_state <= IDLE;
+        endcase
+    end
+
 endmodule
