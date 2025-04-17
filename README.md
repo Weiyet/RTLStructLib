@@ -70,9 +70,9 @@ gtkwave <waveform.vcd>
 Include file list <Data structure>/src/rtl_list.f to your simulation or project.
 
 ### Work in Progress/Future Works 🚀
-🔹 Implementing Hash Table, Binary Tree, AVL Tree and more and more
-🔹 Providing comprehensive test benches (TB) for verification
-🔹 Exploring pyUVM for developing UVM & pyUVM agents
-🔹 Improving performance & adding more use cases
+🔹 Implementing Hash Table, Binary Tree, AVL Tree and more and more <br>
+🔹 Providing comprehensive test benches (TB) for verification <br>
+🔹 Exploring pyUVM for developing UVM & pyUVM agents <br>
+🔹 Improving performance & adding more use cases 
 
 
