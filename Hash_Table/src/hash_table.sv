@@ -1,9 +1,9 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 18/04/2025 1:15 AM
-// Last Update: 18/04/2025 1:15 AM
+// Last Update: 19/04/2025 12:15 AM
 // Module Name: Hash Table
-// Description: Support coliision method of Chaining and Hash Algorithm Modulus
+// Description: Support coliision method of Chaining and Hash Algorithm FNV1A and SHA1  
 // Additional Comments: .
 // 
 //////////////////////////////////////////////////////////////////////////////////
@@ -33,9 +33,13 @@ module hash_table #(
     parameter INDEX_WIDTH = $clog2(TOTAL_ENTRY);
 
     reg [KEY_WIDTH*CHAINING_SIZE-1:0] hash_key_stored [0:INDEX_WIDTH-1];
-    reg [DATA_WIDTH*CHAINING_SIZE-1:0] hash_value_stored [0:INDEX_WIDTH-1];
+    reg [VALUE_WIDTH*CHAINING_SIZE-1:0] hash_value_stored [0:INDEX_WIDTH-1];
     reg [CHAINING_SIZE_WIDTH-1:0] hash_chain_count [0:INDEX_WIDTH-1]; // for collision count
     reg [CHAINING_SIZE_WIDTH-1:0] search_ptr; // for searching the key in the chain
+
+    localparam  IDLE       = 2'b00;
+    localparam  INSERT     = 2'b01;
+    localparam  SEARCH_KEY = 2'b10;
 
     // Hash function selector
     function [INDEX_WIDTH-1:0] get_hash_index;
@@ -82,7 +86,7 @@ module hash_table #(
                 if (collision_count[get_hash_index(key_in)] < CHAINING_SIZE) begin
                     // Insert logic here
                     hash_key_stored[get_hash_index(key_in)][hash_chain_count[get_hash_index(key_in)]*KEY_WIDTH +: KEY_WIDTH] <= key_in;
-                    hash_value_stored[get_hash_index(key_in)][hash_chain_count[get_hash_index(key_in)]*DATA_WIDTH +: DATA_WIDTH] <= value_in;
+                    hash_value_stored[get_hash_index(key_in)][hash_chain_count[get_hash_index(key_in)]*VALUE_WIDTH +: VALUE_WIDTH] <= value_in;
                     hash_chain_count[get_hash_index(key_in)] <= hash_chain_count[get_hash_index(key_in)] + 1;
                     next_state <= IDLE;
                 end else begin
@@ -98,8 +102,8 @@ module hash_table #(
                         // Delete logic here
                         // Remove key and value from hash table
                         // Shift the rest of the chain
-                        hash_key_stored[get_hash_index(key_in)][KEY_WIDTH*CHAINING_SIZE-1 : search_ptr*KEY_WIDTH] <= hash_key_stored[get_hash_index(key_in)][KEY_WIDTH*CHAINING_SIZE-1 : search_ptr*KEY_WIDTH] << (search_ptr * KEY_WIDTH * (CHAINING_SIZE - search_ptr));
-                        hash_value_stored[get_hash_index(key_in)][DATA_WIDTH*CHAINING_SIZE-1 : search_ptr*DATA_WIDTH] <= hash_value_stored[get_hash_index(key_in)][DATA_WIDTH*CHAINING_SIZE-1 : search_ptr*DATA_WIDTH] << (search_ptr * KEY_WIDTH * (CHAINING_SIZE - search_ptr));
+                        hash_key_stored[get_hash_index(key_in)][KEY_WIDTH*CHAINING_SIZE-1 : search_ptr*KEY_WIDTH] <= hash_key_stored[get_hash_index(key_in)][KEY_WIDTH*CHAINING_SIZE-1 : search_ptr*KEY_WIDTH] >> KEY_WIDTH;
+                        hash_value_stored[get_hash_index(key_in)][VALUE_WIDTH*CHAINING_SIZE-1 : search_ptr*VALUE_WIDTH] <= hash_value_stored[get_hash_index(key_in)][VALUE_WIDTH*CHAINING_SIZE-1 : search_ptr*VALUE_WIDTH] >> VALUE_WIDTH;
                         hash_chain_count[get_hash_index(key_in)] <= hash_chain_count[get_hash_index(key_in)] - 1;
                         op_done <= 1;
                         op_error <= 0; // No error
