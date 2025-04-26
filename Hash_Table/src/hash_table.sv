@@ -31,12 +31,14 @@ module hash_table #(
 
     parameter CHAINING_SIZE_WIDTH = $clog2(CHAINING_SIZE); 
     parameter INDEX_WIDTH = $clog2(TOTAL_ENTRY);
-
+    
+    reg [1:0] current_state;
+    reg [1:0] next_state;
     reg [KEY_WIDTH*CHAINING_SIZE-1:0] hash_key_stored [0:INDEX_WIDTH-1];
     reg [VALUE_WIDTH*CHAINING_SIZE-1:0] hash_value_stored [0:INDEX_WIDTH-1];
     reg [CHAINING_SIZE_WIDTH-1:0] hash_chain_count [0:INDEX_WIDTH-1]; // for collision count
     reg [CHAINING_SIZE_WIDTH-1:0] search_ptr; // for searching the key in the chain
-
+    integer i;
     localparam  IDLE       = 2'b00;
     localparam  INSERT     = 2'b01;
     localparam  SEARCH_KEY = 2'b10;
@@ -47,7 +49,7 @@ module hash_table #(
         reg [31:0] hash_value;
         begin
             if (HASH_ALGORITHM == "MODULUS")
-                hash_value = key % TABLE_SIZE;
+                hash_value = key % TOTAL_ENTRY;
             else // for future implentation of other hash algorithm
                 hash_value = key;
                 
@@ -59,7 +61,7 @@ module hash_table #(
     always @ (posedge clk, posedge rst) begin
         if(rst)
             current_state <= IDLE;
-        else if 
+        else  
             current_state <= next_state;
     end
 
@@ -98,19 +100,20 @@ module hash_table #(
 
             SEARCH_KEY: begin
                 if(key_in == hash_key_stored[get_hash_index(key_in)][search_ptr*KEY_WIDTH +: KEY_WIDTH]) begin
-                    if(op == 2'b01) begin
+                    if(op_sel == 2'b01) begin
                         // Delete logic here
                         // Remove key and value from hash table
                         // Shift the rest of the chain
-                        hash_key_stored[get_hash_index(key_in)][KEY_WIDTH*CHAINING_SIZE-1 : search_ptr*KEY_WIDTH] <= hash_key_stored[get_hash_index(key_in)][KEY_WIDTH*CHAINING_SIZE-1 : search_ptr*KEY_WIDTH] >> KEY_WIDTH;
-                        hash_value_stored[get_hash_index(key_in)][VALUE_WIDTH*CHAINING_SIZE-1 : search_ptr*VALUE_WIDTH] <= hash_value_stored[get_hash_index(key_in)][VALUE_WIDTH*CHAINING_SIZE-1 : search_ptr*VALUE_WIDTH] >> VALUE_WIDTH;
+                        // use for loop instead                    
+                        hash_key_stored[get_hash_index(key_in)] <= ((hash_key_stored[get_hash_index(key_in)]>>((search_ptr + 1)*KEY_WIDTH)) << ((search_ptr+1)*KEY_WIDTH)) ^ (hash_key_stored[get_hash_index(key_in)] & ({(KEY_WIDTH*CHAINING_SIZE){1'b1}}>>((search_ptr + 1)*KEY_WIDTH)));
+                        hash_value_stored[get_hash_index(key_in)]<= ((hash_value_stored[get_hash_index(key_in)]>>((search_ptr + 1)*VALUE_WIDTH)) << ((search_ptr+1)*VALUE_WIDTH)) ^ (hash_value_stored[get_hash_index(key_in)] & ({(VALUE_WIDTH*CHAINING_SIZE){1'b1} }>>((search_ptr + 1)*VALUE_WIDTH)));
                         hash_chain_count[get_hash_index(key_in)] <= hash_chain_count[get_hash_index(key_in)] - 1;
                         op_done <= 1;
                         op_error <= 0; // No error
-                    end else if (op == 2'b10) begin
+                    end else if (op_sel == 2'b10) begin
                         // Search logic here
                         // Return the value associated with the key
-                        value_out <= hash_value_stored[get_hash_index(key_in)][search_ptr*DATA_WIDTH +: DATA_WIDTH];
+                        value_out <= hash_value_stored[get_hash_index(key_in)] >> search_ptr*VALUE_WIDTH;
                         collision_count <= hash_chain_count[get_hash_index(key_in)];
                         op_done <= 1;
                         op_error <= 0; // No error
