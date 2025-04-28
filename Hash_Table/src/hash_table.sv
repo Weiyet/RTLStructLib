@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 18/04/2025 1:15 AM
-// Last Update: 19/04/2025 12:15 AM
+// Last Update: 26/04/2025 5:52 PM
 // Module Name: Hash Table
 // Description: Support coliision method of Chaining and Hash Algorithm FNV1A and SHA1  
 // Additional Comments: .
@@ -11,7 +11,7 @@
 module hash_table #(
     parameter KEY_WIDTH = 32,
     parameter VALUE_WIDTH = 32,
-    parameter TOTAL_ENTRY = 64,  // Total index of the hash table
+    parameter TOTAL_INDEX = 64,  // Total index of the hash table
     parameter CHAINING_SIZE = 4, // Number of chains for SINGLE_CYCLE_CHAINING and MULTI_STAGE_CHAINING only
     parameter COLLISION_METHOD = "MULTI_STAGE_CHAINING",  // "MULTI_STAGE_CHAINING", "LINEAR_PROBING" 
     parameter HASH_ALGORITHM = "MODULUS"  // "MODULUS", "SHA1", "FNV1A"
@@ -26,11 +26,11 @@ module hash_table #(
     output reg [VALUE_WIDTH-1:0] value_out,
     output reg op_done,
     output reg op_error, // FULL when insert FAIL, KEY_NOT_FOUND when delete or search FAIL
-    output reg [$clog2(CHAINING_SIZE)-1:0] collision_count 
+    output reg [$clog2(CHAINING_SIZE-1)-1:0] collision_count 
 );
 
     parameter CHAINING_SIZE_WIDTH = $clog2(CHAINING_SIZE); 
-    parameter INDEX_WIDTH = $clog2(TOTAL_ENTRY);
+    parameter INDEX_WIDTH = $clog2(TOTAL_INDEX);
     
     reg [1:0] current_state;
     reg [1:0] next_state;
@@ -44,12 +44,12 @@ module hash_table #(
     localparam  SEARCH_KEY = 2'b10;
 
     // Hash function selector
-    function [INDEX_WIDTH-1:0] get_hash_index;
-        input [KEY_WIDTH-1:0] key;
+    function integer get_hash_index;
+        input integer key;
         reg [31:0] hash_value;
         begin
             if (HASH_ALGORITHM == "MODULUS")
-                hash_value = key % TOTAL_ENTRY;
+                hash_value = key % TOTAL_INDEX;
             else // for future implentation of other hash algorithm
                 hash_value = key;
                 
