@@ -2,10 +2,10 @@
 //////////////////////////////////////////////////////////////////////////////////
 // 
 // Create Date: 26/04/2025 03:37:34 PM
-// Last Update Date: 29/04/2025 10:37:12 AM
+// Last Update: 03/05/2025 6:20 PM
 // Module Name: tb
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Description: 1. table_write_random() --> table_read_compare()
+// Description: 
 // Additional Comments:
 // 
 //////////////////////////////////////////////////////////////////////////////////
@@ -15,7 +15,7 @@ module tb(
 );
     parameter DUT_KEY_WIDTH = 32;
     parameter DUT_VALUE_WIDTH = 32;
-    parameter DUT_TOTAL_INDEX = 64;  // Total index of the hash table
+    parameter DUT_TOTAL_INDEX = 8;  // Total index of the hash table
     parameter DUT_CHAINING_SIZE = 4; // Number of chains for SINGLE_CYCLE_CHAINING and MULTI_STAGE_CHAINING only
     parameter DUT_COLLISION_METHOD = "MULTI_STAGE_CHAINING";  // "MULTI_STAGE_CHAINING", "LINEAR_PROBING" 
     parameter DUT_HASH_ALGORITHM = "MODULUS";  // "MODULUS", "SHA1", "FNV1A"
@@ -42,15 +42,19 @@ module tb(
     
     integer temp;
     
-    task find_first_index (input integer key, output index_out);
+    task find_first_index (input integer key, output integer index_out); // icarus does not support in built method find_first_index
     begin
        index_out = -1;
        temp = get_hash_index(key);
+       $display("%0d",expected_hash_key[temp].size());
        for (integer i = 0; i < expected_hash_key[temp].size(); i = i + 1) begin
           if(key == expected_hash_key[temp][i]) begin
              index_out = i;
-             $display("%0t Key %0d is found at Index %0d Chain no %0d", $realtime, key, temp, i);
+             $display("%0t find_first_index: Key %0d is found at Index %0d Chain no %0d", $realtime, key, temp, i);
           end
+       end
+       if (index_out == -1) begin
+          $display("%0t find_first_index: Key %0d is not found", $realtime, key);
        end
     end
     endtask
@@ -61,15 +65,17 @@ module tb(
 
     reg clk=0;
     reg rst=0;
-    reg [DUT_KEY_WIDTH-1:0] key_in;
-    reg [DUT_VALUE_WIDTH-1:0] value_in;
-    reg [1:0] op_sel;
-    reg op_en;
+    reg [DUT_KEY_WIDTH-1:0] key_in=0;
+    reg [DUT_VALUE_WIDTH-1:0] value_in=0;
+    reg [1:0] op_sel=0;
+    reg op_en=0;
     wire [DUT_VALUE_WIDTH-1:0] value_out;
     wire op_done;
     wire op_error;
     wire [CHAIN_WIDTH-1:0] collision_count;
     integer index_out;
+    integer error;
+    integer data_rd;
 
     integer err_cnt = 0;
 
@@ -109,19 +115,20 @@ module tb(
             target_index = get_hash_index(key); 
         end
         wait(op_done)
-        #1
         if($size(expected_hash_key[target_index]) < DUT_CHAINING_SIZE) begin
-            $display("%0t hash_table_insert: Data %0d is inserted to expected index %0d", $realtime, value, target_index);
+            $display("%0t hash_table_insert: Key %0d - Value %0d is inserted to expected index %0d", $realtime, value, key, target_index);
             expected_hash_key[target_index].push_back(key);
             expected_hash_value[target_index].push_back(value);
         end else begin
             if(op_error)
-               $display("%0t hash_table_insert: Data %0d is not inserted succesfully, chain is full, op_error is asserted correctly", $realtime, value);
+               $display("%0t hash_table_insert: Key %0d - Value %0d is not inserted succesfully, chain is full, op_error is asserted correctly", $realtime, value, key);
             else begin
-               $error("%0t hash_table_insert: Data %0d is not inserted succesfully, chain is full, op_error is not asserted expectedly", $realtime, value);
+               $error("%0t hash_table_insert: Key %0d - Value %0d is not inserted succesfully, chain is full, op_error is not asserted expectedly", $realtime, value, key);
                err_cnt += 1;
             end
         end
+        @ (posedge clk) 
+        op_en <= 0;
     endtask
     
     task hash_table_delete(input [DUT_KEY_WIDTH-1:0] key);
@@ -133,21 +140,24 @@ module tb(
         end
         wait(op_done)
         #1
-        find_index(key,index_out);
+        find_first_index(key,index_out);
         if(index_out != -1) begin
-            $display("%0t hash_table_delete: Key %d at index %0d is deleted", $realtime, key, target_index);
-            expected_hash_key[target_index].pop(index_out);
+            $display("%0t hash_table_delete: Key %0d at index %0d is deleted", $realtime, key, target_index);
+            expected_hash_key[target_index].delete(index_out);
+            expected_hash_value[target_index].delete(index_out);
         end else begin
             if(op_error)
-               $display("%0t hash_table_delete: Data %0d is not deleted succesfully, key is unfound, op_error is asserted correctly", $realtime, value);
+               $display("%0t hash_table_delete: Key %0d is not deleted succesfully, key is unfound, op_error is asserted correctly", $realtime, key);
             else begin
-               $error("%0t hash_table_delete: Data %0d is not inserted succesfully, key is unfound, op_error is not asserted expectedly", $realtime, value);
+               $error("%0t hash_table_delete: Key %0d is not deleted succesfully, key is unfound, op_error is not asserted expectedly", $realtime, key);
                err_cnt += 1;
             end
         end
+        @ (posedge clk) 
+        op_en <= 0;
     endtask
     
-    task hash_table_search(input [DUT_KEY_WIDTH-1:0] key);
+    task hash_table_search(input [DUT_KEY_WIDTH-1:0] key, output error, output [DUT_VALUE_WIDTH-1:0] data_rd);
         @ (posedge clk) begin
             key_in <= key;
             op_sel <= 2'b10;
@@ -155,8 +165,8 @@ module tb(
             target_index = get_hash_index(key); 
         end
         wait(op_done)
-        #1
-        find_index(key,index_out);
+        #1;
+        find_first_index(key,index_out);
         if(index_out != -1) begin
             if(expected_hash_value[target_index][index_out] == value_out) 
                 $display("%0t hash_table_search: Key %0d - value %0d is found", $realtime, key, value_out);
@@ -172,6 +182,8 @@ module tb(
                err_cnt += 1;
             end
         end
+        @ (posedge clk) 
+        op_en <= 0;  
     endtask
 
     initial begin
@@ -184,14 +196,20 @@ module tb(
         if ($value$plusargs("VCDFILE=%s",vcdfile))
             $dumpfile(vcdfile);
         if ($value$plusargs("VCDLEVEL=%d",vcdlevel))
-            $dumpvars(vcdlevel,table_tb);
+            $dumpvars(vcdlevel,tb);
         if ($value$plusargs("SEED=%d",seed)) begin
             temp = $urandom(seed);
             $display("Seed = %d",seed);
         end
-        // rst = 1;
-        // #100 
-        // rst = 0;
+        rst = 1;
+        #100 
+        rst = 0;
+        hash_table_insert(1,2);
+        hash_table_search(1,error,data_rd);
+        hash_table_insert(3,2);
+        hash_table_delete(1);
+        hash_table_search(1,error,data_rd);
+        hash_table_search(3,error,data_rd);
     
         #1000;
         if (err_cnt > 0) begin
