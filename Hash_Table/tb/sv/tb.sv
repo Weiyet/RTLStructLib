@@ -2,7 +2,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 // 
 // Create Date: 26/04/2025 03:37:34 PM
-// Last Update: 03/05/2025 6:20 PM
+// Last Update: 04/05/2025 12:17 AM
 // Module Name: tb
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Description: 
@@ -61,7 +61,7 @@ module tb(
 
     // associative array datatype is not supported by icarus 
     reg [DUT_KEY_WIDTH-1:0] expected_hash_key [0:DUT_TOTAL_INDEX-1][$];
-    reg [DUT_VALUE_WIDTH-1:0] expected_hash_value [0:DUT_TOTAL_INDEX-1][$];
+    reg [DUT_VALUE_WIDTH-1:0] expected_hash_value  [0:DUT_TOTAL_INDEX-1][$];
 
     reg clk=0;
     reg rst=0;
@@ -115,10 +115,17 @@ module tb(
             target_index = get_hash_index(key); 
         end
         wait(op_done)
+        #1
+        find_first_index(key,index_out);
         if($size(expected_hash_key[target_index]) < DUT_CHAINING_SIZE) begin
-            $display("%0t hash_table_insert: Key %0d - Value %0d is inserted to expected index %0d", $realtime, value, key, target_index);
-            expected_hash_key[target_index].push_back(key);
-            expected_hash_value[target_index].push_back(value);
+            if(index_out != -1) begin
+                expected_hash_value[target_index][index_out] = value;
+                $display("%0t hash_table_insert: Key %0d - Value %0d is updated to expected index %0d", $realtime, value, key, target_index);
+            end else begin
+                expected_hash_key[target_index].push_back(key);
+                expected_hash_value[target_index].push_back(value);
+                $display("%0t hash_table_insert: Key %0d - Value %0d is inserted to expected index %0d", $realtime, value, key, target_index);
+            end
         end else begin
             if(op_error)
                $display("%0t hash_table_insert: Key %0d - Value %0d is not inserted succesfully, chain is full, op_error is asserted correctly", $realtime, value, key);
