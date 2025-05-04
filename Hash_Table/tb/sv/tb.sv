@@ -2,7 +2,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 // 
 // Create Date: 26/04/2025 03:37:34 PM
-// Last Update: 04/05/2025 06:08 PM
+// Last Update: 03/05/2025 6:20 PM
 // Module Name: tb
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Description: 
@@ -220,6 +220,21 @@ module tb(
         op_en <= 0;  
     endtask
 
+    task direct_basic_op_test;
+        hash_table_insert(1,2);
+        hash_table_search(1,error,data_rd);
+        hash_table_insert(3,2);
+        hash_table_insert(11,3);
+        hash_table_insert(19,4);
+        hash_table_insert(27,5);
+        hash_table_insert(35,5);
+        hash_table_insert(43,5);
+        hash_table_delete(1);
+        hash_table_search(19,error,data_rd);
+        hash_table_search(1,error,data_rd);
+        hash_table_search(3,error,data_rd);
+    endtask
+
     initial begin
         string vcdfile;
         int vcdlevel;
@@ -239,19 +254,7 @@ module tb(
         reset_model();
         #100 
         rst = 0;
-        hash_table_insert(1,2);
-        hash_table_search(1,error,data_rd);
-        hash_table_insert(3,2);
-        hash_table_insert(11,3);
-        hash_table_insert(19,4);
-        hash_table_insert(27,5);
-        hash_table_insert(35,5);
-        hash_table_insert(43,5);
-        hash_table_delete(1);
-        hash_table_search(19,error,data_rd);
-        hash_table_search(1,error,data_rd);
-        hash_table_search(3,error,data_rd);
-    
+        direct_basic_op_test();
         #1000;
         if (err_cnt > 0) begin
             $display("\n%0t TEST FAILED",$realtime);
