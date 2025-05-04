@@ -81,6 +81,17 @@ module tb(
     end
     endtask
 
+    task print_hash_table;
+    begin
+       for (integer i = 0; i < DUT_TOTAL_INDEX; i = i + 1) begin
+          $display("Hash Table Index %0d: ", i);
+          for (integer j = 0; j < expected_hash_entry_count[i]; j = j + 1) begin
+             $display("Key: %0d, Value: %0d", expected_hash_key[i][j], expected_hash_value[i][j]);
+          end
+       end
+    end
+    endtask
+
     task delete_index (input integer key, input integer index);
     begin
        temp = get_hash_index(key);
@@ -164,6 +175,7 @@ module tb(
         end
         @ (posedge clk) 
         op_en <= 0;
+        print_hash_table();
     endtask
     
     task hash_table_delete(input [DUT_KEY_WIDTH-1:0] key);
@@ -189,6 +201,7 @@ module tb(
         end
         @ (posedge clk) 
         op_en <= 0;
+        print_hash_table();
     endtask
     
     task hash_table_search(input [DUT_KEY_WIDTH-1:0] key, output error, output [DUT_VALUE_WIDTH-1:0] data_rd);
@@ -218,6 +231,7 @@ module tb(
         end
         @ (posedge clk) 
         op_en <= 0;  
+        print_hash_table();
     endtask
 
     task direct_basic_op_test;
