@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/c9b85e84-b05b-4718-8eeb-e9e6f9067ea5" width="240""/>
+</p>
+
 # RTLStructLib
 Highly optimized, synthesizable data structures module/IP library for hardware design
 
