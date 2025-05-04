@@ -2,7 +2,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 // 
 // Create Date: 26/04/2025 03:37:34 PM
-// Last Update: 04/05/2025 12:17 AM
+// Last Update: 04/05/2025 06:08 PM
 // Module Name: tb
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Description: 
@@ -24,8 +24,31 @@ module tb(
     parameter TB_SIM_TIMEOUT = 30; //ms.
 
     localparam MAX_VALUE = 2**(DUT_VALUE_WIDTH)-1;
-    localparam INDEX_WIDTH = $clog2(DUT_TOTAL_INDEX-1);
-    localparam CHAIN_WIDTH = $clog2(DUT_CHAINING_SIZE-1);
+    localparam INDEX_WIDTH = $clog2(DUT_TOTAL_INDEX);
+    localparam CHAIN_WIDTH = $clog2(DUT_CHAINING_SIZE);
+
+    // associative array datatype is not supported by icarus 
+    // icarus does not support 2d queue.
+    reg [DUT_KEY_WIDTH-1:0] expected_hash_key [0:DUT_TOTAL_INDEX-1][0:DUT_CHAINING_SIZE-1];
+    reg [DUT_VALUE_WIDTH-1:0] expected_hash_value  [0:DUT_TOTAL_INDEX-1][0:DUT_CHAINING_SIZE-1];
+    integer expected_hash_entry_count [0:DUT_TOTAL_INDEX-1];
+
+    reg clk=0;
+    reg rst=0;
+    reg [DUT_KEY_WIDTH-1:0] key_in=0;
+    reg [DUT_VALUE_WIDTH-1:0] value_in=0;
+    reg [1:0] op_sel=0;
+    reg op_en=0;
+    wire [DUT_VALUE_WIDTH-1:0] value_out;
+    wire op_done;
+    wire op_error;
+    wire [CHAIN_WIDTH-1:0] collision_count;
+    integer index_out;
+    integer error;
+    integer data_rd;
+
+    integer err_cnt = 0;
+
     // Hash function selector
     function integer get_hash_index;
         input integer key;
@@ -46,8 +69,7 @@ module tb(
     begin
        index_out = -1;
        temp = get_hash_index(key);
-       $display("%0d",expected_hash_key[temp].size());
-       for (integer i = 0; i < expected_hash_key[temp].size(); i = i + 1) begin
+       for (integer i = 0; i < expected_hash_entry_count[temp]; i = i + 1) begin
           if(key == expected_hash_key[temp][i]) begin
              index_out = i;
              $display("%0t find_first_index: Key %0d is found at Index %0d Chain no %0d", $realtime, key, temp, i);
@@ -59,25 +81,30 @@ module tb(
     end
     endtask
 
-    // associative array datatype is not supported by icarus 
-    reg [DUT_KEY_WIDTH-1:0] expected_hash_key [0:DUT_TOTAL_INDEX-1][$];
-    reg [DUT_VALUE_WIDTH-1:0] expected_hash_value  [0:DUT_TOTAL_INDEX-1][$];
-
-    reg clk=0;
-    reg rst=0;
-    reg [DUT_KEY_WIDTH-1:0] key_in=0;
-    reg [DUT_VALUE_WIDTH-1:0] value_in=0;
-    reg [1:0] op_sel=0;
-    reg op_en=0;
-    wire [DUT_VALUE_WIDTH-1:0] value_out;
-    wire op_done;
-    wire op_error;
-    wire [CHAIN_WIDTH-1:0] collision_count;
-    integer index_out;
-    integer error;
-    integer data_rd;
-
-    integer err_cnt = 0;
+    task delete_index (input integer key, input integer index);
+    begin
+       temp = get_hash_index(key);
+       for (integer i = index; i < expected_hash_entry_count[temp]; i = i + 1) begin
+          expected_hash_key[temp][i] = expected_hash_key[temp][i+1];
+          expected_hash_value[temp][i] = expected_hash_value[temp][i+1];
+       end
+       expected_hash_key[temp][expected_hash_entry_count[temp]-1] = 0;
+       expected_hash_value[temp][expected_hash_entry_count[temp]-1] = 0;
+       expected_hash_entry_count[temp] = expected_hash_entry_count[temp] - 1;
+       $display("%0t delete_index: Key %0d is deleted at Index %0d Chain no %0d", $realtime, key, temp, index);
+    end
+    endtask
+    // icarus does not support associative array datatype
+    
+    task reset_model;
+        for (integer i = 0; i < DUT_TOTAL_INDEX; i = i + 1) begin
+            expected_hash_entry_count[i] = 0;
+            for (integer j = 0; j < DUT_CHAINING_SIZE; j = j + 1) begin
+                expected_hash_key[i][j] = 0;
+                expected_hash_value[i][j] = 0;
+            end
+        end
+    endtask
 
     `ifdef XILINX_GLS
         glbl glbl (); // for Xilinx GLS
@@ -117,13 +144,14 @@ module tb(
         wait(op_done)
         #1
         find_first_index(key,index_out);
-        if($size(expected_hash_key[target_index]) < DUT_CHAINING_SIZE) begin
+        if(expected_hash_entry_count[target_index] < DUT_CHAINING_SIZE) begin
             if(index_out != -1) begin
                 expected_hash_value[target_index][index_out] = value;
                 $display("%0t hash_table_insert: Key %0d - Value %0d is updated to expected index %0d", $realtime, value, key, target_index);
             end else begin
-                expected_hash_key[target_index].push_back(key);
-                expected_hash_value[target_index].push_back(value);
+                expected_hash_key[target_index][expected_hash_entry_count[target_index]] = key;
+                expected_hash_value[target_index][expected_hash_entry_count[target_index]] = value;
+                expected_hash_entry_count[target_index] = expected_hash_entry_count[target_index] + 1;
                 $display("%0t hash_table_insert: Key %0d - Value %0d is inserted to expected index %0d", $realtime, value, key, target_index);
             end
         end else begin
@@ -150,8 +178,7 @@ module tb(
         find_first_index(key,index_out);
         if(index_out != -1) begin
             $display("%0t hash_table_delete: Key %0d at index %0d is deleted", $realtime, key, target_index);
-            expected_hash_key[target_index].delete(index_out);
-            expected_hash_value[target_index].delete(index_out);
+            delete_index(key,index_out);
         end else begin
             if(op_error)
                $display("%0t hash_table_delete: Key %0d is not deleted succesfully, key is unfound, op_error is asserted correctly", $realtime, key);
@@ -209,12 +236,19 @@ module tb(
             $display("Seed = %d",seed);
         end
         rst = 1;
+        reset_model();
         #100 
         rst = 0;
         hash_table_insert(1,2);
         hash_table_search(1,error,data_rd);
         hash_table_insert(3,2);
+        hash_table_insert(11,3);
+        hash_table_insert(19,4);
+        hash_table_insert(27,5);
+        hash_table_insert(35,5);
+        hash_table_insert(43,5);
         hash_table_delete(1);
+        hash_table_search(19,error,data_rd);
         hash_table_search(1,error,data_rd);
         hash_table_search(3,error,data_rd);
     
