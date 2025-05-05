@@ -17,10 +17,10 @@ synth: ${SIM_OPTS}
 netlist_sim: gen_netlist_sim 
 	./${DUT}.netlist.sim +VCDFILE=netlist_sim.vcd +VCDLEVEL=0 +SEED=${SEED} | tee netlist_sim.log
 
-gen_netlist_sim: tb.sv ${DUT}.netlist.v | ${XILINX_LIB_DIR}
+gen_netlist_sim: tb.sv ${DUT}.netlist.v | ${XILINX_LIB_DIR}/.git
 	iverilog -g2012 -DXILINX_GLS -s tb -y ${XILINX_LIB_DIR} -y ${XILINX_LIB_DIR}/unisims -DXILINX_GLS -o ${DUT}.netlist.sim tb.sv ${DUT}.netlist.v
 
-${XILINX_LIB_DIR}:
+${XILINX_LIB_DIR}/.git:
 	git clone ${XILINX_LIB_URL}
 
 clean:
