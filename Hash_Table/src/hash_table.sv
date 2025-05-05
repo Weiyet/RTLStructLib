@@ -1,10 +1,10 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
-// Create Date: 18/04/2025 01:15 AM
-// Last Update: 05/05/2025 06:07 PM
+// Create Date: 18/04/2025 1:15 AM
+// Last Update: 03/05/2025 6:20 PM
 // Module Name: Hash Table
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Description: 
+// Description: Support coliision method of Chaining and Hash Algorithm FNV1A and SHA1  
 // Additional Comments: .
 // 
 //////////////////////////////////////////////////////////////////////////////////
@@ -85,16 +85,20 @@ module hash_table #(
                             2'b00: current_state <= SEARCH_KEY; //INSERT 
                             2'b01: current_state <= SEARCH_KEY; //DELETE
                             2'b10: current_state <= SEARCH_KEY; //SEARCH
-                            default: current_state <= IDLE;
+                            default: begin 
+                                current_state <= OP_DONE;
+                                op_done <= 1;
+                                op_error <= 1; // Invalid operation
+                            end
                         endcase
                     end else begin
                         current_state <= IDLE;
+                        op_done <= 0;
+                        op_error <= 0;
                     end
                     search_ptr <= 0;
                     value_out <= 0;
                     collision_count <= 0;
-                    op_done <= 0;
-                    op_error <= 0;
                 end
     
                 INSERT: begin
