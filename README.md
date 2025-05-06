@@ -23,7 +23,7 @@ By using these pre-built RTL modules, engineers can accelerate development, redu
 - Doubly Linked List – Bi-directional traversal support <br>
 - Table - Indexed storage mechanism, similar to a register file, enabling rapid direct access and simultaneous read write access to data without hashing. <br>
 - Circular Linked List （WIP） 
-- Hash Table (WIP) – Optimized for high-speed lookups <br>
+- Hash Table – Optimized for high-speed lookups, currently only supports modulus hashing and simple multi-staged chaining to handle collision <br>
 - Systolic Array (WIP) - Organizes processing elements in a regular grid where data flows rhythmically, enabling parallel computation. <br>
 - Binary Tree (WIP) – Fundamental structure for hierarchical data organization <br>
 - AVL Tree (WIP) – Self-balancing binary search tree for efficient operations <br>
