@@ -27,6 +27,7 @@ By using these pre-built RTL modules, engineers can accelerate development, redu
 - Systolic Array (WIP) - Organizes processing elements in a regular grid where data flows rhythmically, enabling parallel computation. <br>
 - Binary Tree (WIP) – Fundamental structure for hierarchical data organization <br>
 - AVL Tree (WIP) – Self-balancing binary search tree for efficient operations <br>
+- List (WIP) - Support sorting, find_index, delete, insert operations <br>
 - And More and More and More (WIP)
 
 ### License
@@ -34,14 +35,14 @@ This project is licensed under the MIT License – see the LICENSE file for deta
 
 ### Getting Started
 1️⃣ Install required tools and package 
-```
+``` bash  
 sudo apt install make git iverilog yosys gtkwave
 pip install cocotb
 pip install cocotb-bus
 ```
 
 1️⃣ Clone the Repository <br> 
-```
+``` bash  
 git clone https://github.com/Weiyet/RTL_Data_Structure.git  
 ```
 
@@ -55,20 +56,20 @@ git clone https://github.com/Weiyet/RTL_Data_Structure.git
  │    ├── 📃 rtl_list.f  # RTL file list required for the modules <br>       
 
 2️⃣ RTL Simulation and Verification
-```
+``` bash  
 # System Verilog Simulation
 cd <Data Structure>/tb/sv
 make sim
 # Python CocoTB Simulation
 cd <Data Structure>/tb/cocotb
-make 
-```
+make
+```     
 3️⃣ Synthesis and Netlist simulation
-```
+``` bash  
 make synth
 ```
 4️⃣ To view VCD waveform 
-```
+``` bash  
 gtkwave <waveform.vcd>
 ```
 5️⃣ Integrate to your project
