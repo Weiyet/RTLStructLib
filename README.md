@@ -79,6 +79,9 @@ Include file list <Data structure>/src/rtl_list.f to your simulation or project.
 🔹 Implementing Hash Table, Binary Tree, AVL Tree and more and more <br>
 🔹 Providing comprehensive test benches (TB) for verification <br>
 🔹 Exploring pyUVM for developing UVM & pyUVM agents <br>
-🔹 Improving performance & adding more use cases 
+🔹 Improving performance & adding more use cases <br>
+
+### Disclaimer 
+Hardware is often highly customized — these modules are designed as references, and you're encouraged to tweak them as needed (e.g., swap registers with RAM, adjust logic latency based on your STA, etc.).
 
 
