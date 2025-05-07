@@ -88,3 +88,4 @@ hash_table #(
 - Search and delete operations may require multiple cycles depending on chain length
 - Performance degrades as collision chains grow longer
 - No optimization for locality or cache behavior
+- Please consider using [CAM(Content Addressable Memory)](https://en.wikipedia.org/wiki/Content-addressable_memory) if you have the resources.
