@@ -2,6 +2,15 @@
   <img src="./assets/RTLStructLib_logo.png" width="240""/>
 </p>
 
+<div align="center">
+  
+![Verilog](https://img.shields.io/badge/Verilog-IEEE_1364--2005-blue)
+![SystemVerilog](https://img.shields.io/badge/SystemVerilog-IEEE_1800--2017-blue)
+![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
+![Status](https://img.shields.io/badge/Status-In_Development-yellow)
+  
+</div>
+
 # RTLStructLib
 Highly optimized, synthesizable data structures module/IP library for hardware design
 
@@ -22,12 +31,12 @@ By using these pre-built RTL modules, engineers can accelerate development, redu
 - Singly Linked List – Efficient memory utilization, dynamic data handling <br>
 - Doubly Linked List – Bi-directional traversal support <br>
 - Table - Indexed storage mechanism, similar to a register file, enabling rapid direct access and simultaneous read write access to data without hashing. <br>
+- List (WIP) - Support sorting, find_index, delete, insert operations <br>
 - Circular Linked List （WIP） 
 - Hash Table – Optimized for high-speed lookups, currently only supports modulus hashing and simple multi-staged chaining to handle collision <br>
 - Systolic Array (WIP) - Organizes processing elements in a regular grid where data flows rhythmically, enabling parallel computation. <br>
 - Binary Tree (WIP) – Fundamental structure for hierarchical data organization <br>
 - AVL Tree (WIP) – Self-balancing binary search tree for efficient operations <br>
-- List (WIP) - Support sorting, find_index, delete, insert operations <br>
 - And More and More and More (WIP)
 
 ### License
