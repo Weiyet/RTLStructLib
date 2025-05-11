@@ -3,7 +3,7 @@
 // Module Name: list
 // Create Date: 07/05/2025 07:51 AM
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Last Update: 09/05/2025 11:36 PM
+// Last Update: 11/05/2025 03:14 PM
 // Last Updated By: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Description: List 
 // Additional Comments: 
@@ -14,52 +14,50 @@
 module list #(
     parameter DATA_WIDTH = 32,
     parameter LENGTH = 8,
-    parameter SUM_METHOD = 0, // 0: parallel sum, 1: sequentia sum, 2: adder tree. //ICARUS does not support string overriden to parameter in CLI. 
-    localparam LENGTH_WIDTH =  $clog2(LENGTH+1),
-    localparam DATA_OUT_WIDTH = $clog2(LENGTH)+DATA_WIDTH-1 
+    parameter SUM_METHOD = 0, // 0: parallel (combo) sum, 1: sequentia sum, 2: adder tree. //ICARUS does not support string overriden to parameter in CLI. 
+    localparam LENGTH_WIDTH =  $clog2(LENGTH+1)
 )(
-    input                                               clk,
-    input                                               rst,
-    input  [1:0]                                        op_sel,
-    input                                               op_en,
-    input  [DATA_WIDTH-1:0]                             data_in,
-    input  [$clog2(LENGTH+1)-1:0]                       index_in,
-    output reg [$clog2(LENGTH+1)+DATA_WIDTH-1:0]        data_out, //FIXME 
-    output reg                                          op_done,
-    output reg                                          op_error
+    input  wire                                clk,
+    input  wire                                rst,
+    input  wire [1:0]                          op_sel,
+    input  wire                                op_en,
+    input  wire [DATA_WIDTH-1:0]               data_in,
+    input  wire [LENGTH_WIDTH-1:0]             index_in,
+    output reg  [LENGTH_WIDTH+DATA_WIDTH-1:0]  data_out,  
+    output reg                                 op_done,
+    output reg                                 op_error
 );
 
   //  localparam LENGTH_WIDTH = $clog2(LENGTH+1) 
     
-    localparam IDLE        = 2'b00;
-    localparam SUM         = 2'b01;
-    localparam SORT        = 2'b10;
-    localparam ACCESS_DONE = 2'b11;
+    localparam IDLE        = 3'b000;
+    localparam SUM         = 3'b001;
+    localparam SORT        = 3'b010;
+    localparam SEARCH      = 3'b011;
+    localparam ACCESS_DONE = 3'b100;
     
-    reg [1:0]              current_state;
-    reg [LENGTH_WIDTH-1:0] data_count;
-    reg [DATA_WIDTH-1:0]   data_stored [0:LENGTH-1]; // could implement with RAM for large size of data
-    reg [2:0]              current_state;
-    wire                   op_is_write; 
-    wire                   op_is_read;
-    wire                   op_is_find_all_index;
-    wire                   op_is_find_1st_index;
-    wire                   op_is_sum;
-    wire                   op_is_sort_asc;
-    wire                   op_is_sort_des;
+    reg [1:0]                        current_state;
+    reg [$clog2(LENGTH+1)-1:0]       data_count;
+    reg [LENGTH-1:0][DATA_WIDTH-1:0] data_stored; // could implement with RAM for large size of data
+    reg [DATA_WIDTH*LENGTH-1:0]      data_stored_packed;
+    reg [2:0]                        current_state;
+    wire                             op_is_write; 
+    wire                             op_is_read;
+    wire                             op_is_find_all_index;
+    wire                             op_is_find_1st_index;
+    wire                             op_is_sum;
+    wire                             op_is_sort_asc;
+    wire                             op_is_sort_des;
     //ADDER
-    wire                   sum_done;
-    wire                   sum_in_progress;
-    wire [$clog2(LENGTH+1)+DATA_WIDTH-1:0] sum_result;
-    
-    reg [$clog2(LENGTH+1)+DATA_WIDTH-1:0] parallel_sum;
+    reg                                sum_start;
+    wire                               sum_done;
+    wire                               sum_in_progress;
+    wire [LENGTH_WIDTH+DATA_WIDTH-1:0] sum_result;
+    //SORT
+    reg                    sort_start;
+    reg                    sort_order;
+  
     integer i;
-
-    always @(*) begin
-        for (i = 0; i < LENGTH; i++) begin
-            parallel_sum <= parallel_sum + data_stored[i];
-        end
-    end
     
     assign op_is_read = (op_sel == 3'b000) & op_en;
     assign op_is_write = (op_sel == 3'b001) & op_en;
@@ -69,6 +67,21 @@ module list #(
     assign op_is_sort_asc = (op_sel == 3'b101) & op_en;
     assign op_is_sort_des = (op_sel == 3'b110) & op_en;
     
+    always @ (*) begin
+        data_stored_packed = {<< DATA_WIDTH {data_stored}};
+    end
+    
+     adder #(.DATA_WIDTH(DATA_WIDTH), 
+             .LENGTH(LENGTH),
+             .SUM_METHOD(SUM_METHOD))
+     u_adder (.clk(clk),
+              .rst(rst),
+              .data_in(data_stored), 
+              .sum_start(sum_start),
+              .sum_result(sum_result),
+              .sum_done(sum_done),
+              .sum_in_progress(sum_in));
+     
     always @ (posedge clk, posedge rst) begin
         if(rst) begin
             for(i = 0; i < LENGTH; i++) begin
@@ -84,6 +97,7 @@ module list #(
     always @ (posedge clk, posedge rst) begin
        if(rst) begin
           current_state <= IDLE;
+          sum_start <= 1'b0;
           op_done <= 1'b1;
           op_error <= 1'b0;
           data_out <= 'b0;
@@ -102,18 +116,26 @@ module list #(
                 end else if (op_is_sum) begin
                     if(SUM_METHOD == 0) begin //PARALLEL SUM
                         current_state <= ACCESS_DONE;
-                        data_out <= parallel_sum;
+                        data_out <= sum_result;
                         op_done <= 1'b1;
                         op_error <= 1'b0;
                     end else if(SUM_METHOD == 1) begin //SEQUENTIAL SUM
                         current_state <= SUM;
+                        sum_start <= 1'b1;
                     end else if (SUM_METHOD == 2) begin //ADDER TREE
                         current_state <= SUM;
+                        sum_start <= 1'b1;
                     end
+                end else if (op_is_find_all_index | op_is_find_1st_index) begin                
+                    current_state <= SORT;
                 end else if (op_is_sort_asc) begin
                     current_state <= SORT;
+                    sort_start <= 1'b1;
+                    sort_order <= 1'b0;
                 end else if (op_is_sort_des) begin
                     current_state <= SORT;
+                    sort_start <= 1'b1;
+                    sort_order <= 1'b1;
                 end else if(op_en) begin // OP selected is not available : OP_ERROR
                     current_state <= ACCESS_DONE;
                     op_done <= 1'b1;
