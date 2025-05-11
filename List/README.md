@@ -14,6 +14,26 @@ The List module is a versatile data storage and manipulation component implement
   - Parallel sum (combinatorial)
   - Sequential sum
   - Adder tree
+    
+## Module Instantiation
+``` verilog
+// Instantiation with custom parameters
+list #(
+    .DATA_WIDTH(16),         // 16-bit data elements
+    .LENGTH(32),             // List can store up to 32 elements
+    .SUM_METHOD(1)           // Use sequential summation method
+) custom_list (
+    .clk(clk),
+    .rst(rst),
+    .op_sel(op_sel),
+    .op_en(op_en),
+    .data_in(data_in),
+    .index_in(index_in),
+    .data_out(data_out),
+    .op_done(op_done),
+    .op_error(op_error)
+);
+```
 
 ## Parameters
 
@@ -22,12 +42,6 @@ The List module is a versatile data storage and manipulation component implement
 | DATA_WIDTH   | Width of each data element in bits               | 32      |
 | LENGTH       | Maximum number of elements in the list           | 8       |
 | SUM_METHOD   | Method for calculating sum (0: parallel, 1: sequential, 2: adder tree) | 0 |
-
-### Derived Parameters
-| Parameter       | Description                              | Formula           |
-|-----------------|------------------------------------------|-------------------|
-| LENGTH_WIDTH    | Width of index/length counters           | $clog2(LENGTH+1)  |
-| DATA_OUT_WIDTH  | Width of output data for sum operations  | $clog2(LENGTH)+DATA_WIDTH-1 |
 
 ## IO Ports
 
