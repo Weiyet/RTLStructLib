@@ -3,7 +3,7 @@
 // Module Name: list
 // Create Date: 07/05/2025 07:51 AM
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Last Update: 11/05/2025 03:14 PM
+// Last Update: 12/05/2025 12:23 PM
 // Last Updated By: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Description: List 
 // Additional Comments: 
@@ -36,7 +36,6 @@ module list #(
     localparam SEARCH      = 3'b011;
     localparam ACCESS_DONE = 3'b100;
     
-    reg [1:0]                        current_state;
     reg [$clog2(LENGTH+1)-1:0]       data_count;
     reg [LENGTH-1:0][DATA_WIDTH-1:0] data_stored; // could implement with RAM for large size of data
     reg [DATA_WIDTH*LENGTH-1:0]      data_stored_packed;
@@ -49,13 +48,16 @@ module list #(
     wire                             op_is_sort_asc;
     wire                             op_is_sort_des;
     //ADDER
-    reg                                sum_start;
+    reg                                sum_en;
     wire                               sum_done;
     wire                               sum_in_progress;
     wire [LENGTH_WIDTH+DATA_WIDTH-1:0] sum_result;
     //SORT
-    reg                    sort_start;
-    reg                    sort_order;
+    reg                                sort_en;
+    reg                                sort_order;
+    wire                               sort_done;
+    wire                               sort_in_progress;
+    wire [LENGTH-1:0][DATA_WIDTH-1:0]  data_sorted;
   
     integer i;
     
@@ -67,9 +69,9 @@ module list #(
     assign op_is_sort_asc = (op_sel == 3'b101) & op_en;
     assign op_is_sort_des = (op_sel == 3'b110) & op_en;
     
-    always @ (*) begin
-        data_stored_packed = {<< DATA_WIDTH {data_stored}};
-    end
+//    always @ (*) begin
+//        data_stored_packed = {<< DATA_WIDTH {data_stored}};
+//    end
     
      adder #(.DATA_WIDTH(DATA_WIDTH), 
              .LENGTH(LENGTH),
@@ -77,10 +79,21 @@ module list #(
      u_adder (.clk(clk),
               .rst(rst),
               .data_in(data_stored), 
-              .sum_start(sum_start),
+              .sum_en(sum_en),
               .sum_result(sum_result),
               .sum_done(sum_done),
-              .sum_in_progress(sum_in));
+              .sum_in_progress(sum_in_progress));
+              
+    sorter #(.DATA_WIDTH(DATA_WIDTH),
+           .LENGTH(LENGTH))
+    u_sorter (.clk(clk),
+            .rst(rst),
+            .data_in(data_stored),
+            .sort_en(sort_en),
+            .sort_order(sort_order), 
+            .sort_done(sort_done),
+            .sort_in_progress(sort_in_progress),
+            .data_sorted(data_sorted));
      
     always @ (posedge clk, posedge rst) begin
         if(rst) begin
@@ -97,7 +110,7 @@ module list #(
     always @ (posedge clk, posedge rst) begin
        if(rst) begin
           current_state <= IDLE;
-          sum_start <= 1'b0;
+          sum_en <= 1'b0;
           op_done <= 1'b1;
           op_error <= 1'b0;
           data_out <= 'b0;
@@ -121,20 +134,20 @@ module list #(
                         op_error <= 1'b0;
                     end else if(SUM_METHOD == 1) begin //SEQUENTIAL SUM
                         current_state <= SUM;
-                        sum_start <= 1'b1;
+                        sum_en <= 1'b1;
                     end else if (SUM_METHOD == 2) begin //ADDER TREE
                         current_state <= SUM;
-                        sum_start <= 1'b1;
+                        sum_en <= 1'b1;
                     end
                 end else if (op_is_find_all_index | op_is_find_1st_index) begin                
                     current_state <= SORT;
                 end else if (op_is_sort_asc) begin
                     current_state <= SORT;
-                    sort_start <= 1'b1;
+                    sort_en <= 1'b1;
                     sort_order <= 1'b0;
                 end else if (op_is_sort_des) begin
                     current_state <= SORT;
-                    sort_start <= 1'b1;
+                    sort_en <= 1'b1;
                     sort_order <= 1'b1;
                 end else if(op_en) begin // OP selected is not available : OP_ERROR
                     current_state <= ACCESS_DONE;

@@ -3,7 +3,7 @@
 // Module Name: adder
 // Create Date: 11/05/2025 01:58 AM
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Last Update: 11/05/2025 01:50 PM
+// Last Update: 12/05/2025 12:22 PM
 // Last Updated By: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Description: 
 // Additional Comments: 
@@ -20,7 +20,7 @@ module adder #(
     input  wire                               clk,
     input  wire                               rst,
     input  wire [LENGTH-1:0][DATA_WIDTH-1:0]  data_in,
-    input  wire                               sum_start,
+    input  wire                               sum_en,
     output reg  [LENGTH_WIDTH+DATA_WIDTH-1:0] sum_result,
     output reg                                sum_done,
     output reg                                sum_in_progress
@@ -52,15 +52,15 @@ module adder #(
                 cur_ptr <= 'b0;
                 sum_done <= 1'b0;
                 sum_in_progress <= 1'b0;
-            end else if(!sum_start) begin
+            end else if(!sum_en) begin
                 sum_done <= 1'b0;
                 sum_in_progress <= 1'b0;
                 cur_ptr <= 'b0;
-            end else if(sum_start | cur_ptr < (LENGTH-1)) begin
+            end else if(sum_en | cur_ptr < (LENGTH-1)) begin
                 sum_result <= sum_result + data_in[cur_ptr*DATA_WIDTH +: DATA_WIDTH];
                 cur_ptr <= cur_ptr + 'b1;
                 sum_in_progress <= 1'b1;
-            end else if(sum_start & !sum_done & cur_ptr == (LENGTH-1))begin
+            end else if(sum_en & !sum_done & cur_ptr == (LENGTH-1))begin
                 sum_result <= sum_result + data_in[cur_ptr*DATA_WIDTH +: DATA_WIDTH];
                 sum_done <= 1'b1;
             end
@@ -83,13 +83,13 @@ module adder #(
                         output_stage[i][j] <= 'b0;
                     end
                 end
-            end else if(!sum_start) begin
+            end else if(!sum_en) begin
                 for(i=1; i<NO_OF_STAGE; i=i+1) begin
                     for(j=0; j<TOTAL_INPUT_INT; j=j+1) begin 
                         output_stage[i][j] <= 'b0;
                     end
                 end            
-            end else if(sum_start | stg_ptr < (NO_OF_STAGE-1)) begin
+            end else if(sum_en | stg_ptr < (NO_OF_STAGE-1)) begin
                 for(i=0; (i*2+1)<TOTAL_INPUT_INT; i=i+1)
                     output_stage[stg_ptr+1][i] <= output_stage[stg_ptr][i*2] + output_stage[stg_ptr][i*2+1]; // unused node will remain 0
             end
@@ -100,14 +100,14 @@ module adder #(
                 stg_ptr <= 'b0;
                 sum_done <= 1'b0;
                 sum_in_progress <= 1'b0;
-            end else if(!sum_start) begin
+            end else if(!sum_en) begin
                 stg_ptr <= 'b0;
                 sum_done <= 1'b0;
                 sum_in_progress <= 1'b0;
-            end else if(sum_start | stg_ptr < (NO_OF_STAGE-1)) begin
+            end else if(sum_en | stg_ptr < (NO_OF_STAGE-1)) begin
                 stg_ptr <= stg_ptr + 'b1;
                 sum_in_progress <= 1'b1;
-            end else if(sum_start & !sum_done & stg_ptr == (NO_OF_STAGE-1)) begin
+            end else if(sum_en & !sum_done & stg_ptr == (NO_OF_STAGE-1)) begin
                 stg_ptr <= output_stage[NO_OF_STAGE-1][0];
                 sum_in_progress <= 1'b0;
                 sum_done <= 1'b1;
