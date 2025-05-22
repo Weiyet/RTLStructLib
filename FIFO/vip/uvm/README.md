@@ -26,15 +26,15 @@ A comprehensive SystemVerilog UVM-based Verification IP for FIFO (First-In-First
 ## Directory Structure
 
 ```
-fifo_vip/
-├── src/
-│   └── fifo.sv              # DUT (Design Under Test)
-├── vip/
-│   └── fifo_vip_pkg.sv      # UVM VIP Package
+vip/
+├── agent/
+│   └──
+├── test/
+├── seq/
 ├── tb/
-│   └── fifo_tb_top.sv       # Testbench Top Module
+│   └── tb_top.sv            # Testbench Top Module
 ├── Makefile                 # Build and simulation scripts
-└── README.md               # This file
+└── README.md               # This fil
 ```
 
 ## Quick Start
