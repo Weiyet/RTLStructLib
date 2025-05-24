@@ -88,16 +88,6 @@ rd_seq.start(env.get_rd_sequencer());
 - ✅ Read when empty behavior  
 - ✅ FIFO flag correctness
 - ✅ Transaction success/failure
-Your FIFO must have these signals (names can be different, update `tb_top.sv`):
-
-```systemverilog
-// Required FIFO interface
-input  logic wr_clk, rd_clk, rst
-input  logic [DATA_WIDTH-1:0] data_wr
-input  logic wr_en, rd_en
-output logic [DATA_WIDTH-1:0] data_rd  
-output logic fifo_full, fifo_empty
-```
 
 ## 🚨 Common Issues & Solutions
 
