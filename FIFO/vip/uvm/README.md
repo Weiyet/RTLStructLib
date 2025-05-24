@@ -66,7 +66,7 @@ uvm_config_db#(fifo_vip_config)::set(this, "*", "fifo_vip_cfg", cfg);
 fifo_env = fifo_vip_env::type_id::create("fifo_env", this);
 ````
 
-### Available Sequences
+##🚀 Available Sequences
 
 **Write Sequence:**
 ```systemverilog
