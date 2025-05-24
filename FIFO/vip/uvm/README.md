@@ -45,7 +45,7 @@ uvm/
 │   │   ├── fifo_vip_write_req_seq.sv  # FIFO Write Request sequences
 │   │   ├── fifo_vip_read_req_seq.sv   # FIFO Read Request sequences
 │   └── interface/
-│       └── my_protocol_if.sv          # Interface definition
+│       └── fifo_vip_if.sv          # Interface definition
 ├── tb/
 │   ├── tests/
 │   │   ├── base_test.sv               # Base test class
