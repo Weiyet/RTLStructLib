@@ -1,4 +1,4 @@
-# FIFO UVM VIP 
+# FIFO UVM VIP (Verification IP) User Guide
 ## 📁 Directory Structure
 
 ```
