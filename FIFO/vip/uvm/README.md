@@ -1,4 +1,4 @@
-# FIFO UVM VIP (Verification IP)
+# FIFO UVM VIP (Verification IP) (Development In Progress)
 
 A comprehensive SystemVerilog UVM-based Verification IP for FIFO (First-In-First-Out) memory designs.
 
@@ -26,15 +26,34 @@ A comprehensive SystemVerilog UVM-based Verification IP for FIFO (First-In-First
 ## Directory Structure
 
 ```
-vip/
-├── agent/
-│   └──
-├── test/
-├── seq/
+uvm/
+│   ├── protocol/
+│   │   ├── fifo_vip_pkg.sv            # Main package, types and enums
+│   │   ├── fifo_vip_seq_item.sv       # Transaction definitions
+│   │   └── fifo_vip_config.sv         # Configuration classes
+│   ├── agent/
+│   │   ├── fifo_vip_driver.sv         # Driver 
+│   │   ├── fifo_vip_monitor.sv        # Monitor 
+│   │   ├── fifo_vip_sequencer.sv      # Sequencer
+│   │   └── fifo_vip_agent.sv          # Agent wrapper
+│   ├── env/
+│   │   ├── fifo_vip_env.sv            # Environment
+│   │   ├── fifo_vip_scoreboard.sv     # Checking components
+│   │   └── fifo_vip_coverage.sv       # Coverage collector
+│   ├── sequences/
+│   │   ├── fifo_vip_base_seq.sv       # Base sequence
+│   │   ├── fifo_vip_write_req_seq.sv  # FIFO Write Request sequences
+│   │   ├── fifo_vip_read_req_seq.sv   # FIFO Read Request sequences
+│   └── interface/
+│       └── my_protocol_if.sv          # Interface definition
 ├── tb/
-│   └── tb_top.sv            # Testbench Top Module
-├── Makefile                 # Build and simulation scripts
-└── README.md               # This fil
+│   ├── tests/
+│   │   ├── base_test.sv               # Base test class
+│   │   └── example_tests.sv           # Example test cases
+│   └── tb_top.sv                      # Example testbench
+└── scripts/
+    ├── Makefile
+    └── run_scripts/
 ```
 
 ## Quick Start
