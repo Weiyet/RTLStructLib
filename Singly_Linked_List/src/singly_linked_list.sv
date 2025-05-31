@@ -197,6 +197,8 @@ module singly_linked_list #(
                       target_idx <= head;
                       next_state <= FIND_ADDR;
                    end
+                end else if(op_start) begin
+                    next_state <= FAULT; // Invalid operation
                 end else begin
                    next_state <= IDLE;
                 end

@@ -219,7 +219,9 @@ module doubly_linked_list #(
                       target_idx <= op[2] ? (ascending ? head : tail) : addr_in;
                       next_state <= op[2] ? FIND_INDEX : FIND_ADDR;
                    end
-                end else begin
+                end else if(op_start)begin
+                   next_state <= FAULT; // Invalid operation
+                end else begin 
                    next_state <= IDLE;
                 end
             end
