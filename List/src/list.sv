@@ -3,7 +3,7 @@
 // Module Name: list
 // Create Date: 07/05/2025 07:51 AM
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Last Update: 08/06/2025 04:21 PM
+// Last Update: 13/06/2025 08:34 PM
 // Last Updated By: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Description: List 
 // Additional Comments: 
@@ -74,7 +74,7 @@ module list #(
     assign op_is_sum = (op_sel == 3'b100) & op_en;
     assign op_is_sort_asc = (op_sel == 3'b101) & op_en;
     assign op_is_sort_des = (op_sel == 3'b110) & op_en;
-    assign op_is_delete = (op_sel == 3'b111) & op_en; //not implemented yet
+    assign op_is_delete = (op_sel == 3'b111) & op_en; 
     
 //    always @ (*) begin
 //        data_stored_packed = {<< DATA_WIDTH {data_stored}};
@@ -96,6 +96,7 @@ module list #(
     u_sorter (.clk(clk),
             .rst(rst),
             .data_in(data_stored),
+            .len(data_count),
             .sort_en(sort_en),
             .sort_order(sort_order), 
             .sort_done(sort_done),
@@ -137,8 +138,6 @@ module list #(
                                 data_stored[LENGTH-1-i] <= data_in; //insert data at index_in
                             end else if(i > index_in) begin
                                 data_stored[LENGTH-1-i] <= data_stored[LENGTH-1-i-1]; //shift right
-                            end else begin
-                                data_stored[LENGTH-1-i] <= data_stored[LENGTH-1-i]; //keep the same
                             end
                         end
                         data_count <= data_count + 1; //increment data count
@@ -190,6 +189,24 @@ module list #(
                     op_in_progress <= 1'b1;
                     sort_en <= 1'b1;
                     sort_order <= 1'b1;
+                end else if (op_is_delete) begin    
+                    if (index_in >= data_count) begin
+                        current_state <= ACCESS_DONE; //index_in is out of range
+                        op_done <= 1'b1;
+                        op_error <= 1'b1;
+                    end else begin
+                        current_state <= ACCESS_DONE; //delete data at index_in
+                        for(i = 0; i > LENGTH; i = i + 1) begin
+                            if(i == (data_count-1)) begin
+                                data_stored[LENGTH-1-i] <= 'b0; //insert data at index_in
+                            end else if(i >= index_in) begin
+                                data_stored[i] <= data_stored[i+1]; //shift left
+                            end 
+                        end
+                        data_count <= data_count - 1; //decrement data count
+                        op_done <= 1'b1;
+                        op_error <= 1'b0;
+                    end
                 end else if(op_en) begin // OP selected is not available : OP_ERROR
                     current_state <= ACCESS_DONE;
                     op_done <= 1'b1;

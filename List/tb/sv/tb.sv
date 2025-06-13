@@ -1,6 +1,9 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
-// Create Date: 08/06/2025 09:10 PM
+// Create Date: 09/22/2024 01:42:52 PM
+// Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
+// Last Update: 13/06/2025 09:23 PM
+// Last Updated By: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Module Name: tb
 // Description: Supported Operation 
 //             0. Read(index_in) -> data_out 
@@ -10,6 +13,7 @@
 //             4. Sum() -> data_out (sum of all elements)
 //             5. Sort_Asc()
 //             6. Sort_Des() 
+//             7. Delete(index_in)
 // Additional Comments:
 // 
 //////////////////////////////////////////////////////////////////////////////////
@@ -305,6 +309,33 @@ begin
 end
 endtask
 
+integer sum_result = 0;
+
+task sum();
+begin
+   $display("%0t OP_Sum Request", $realtime);
+   @(posedge (clk));
+   #1
+   op_sel = OP_Sum;
+   op_en = 1;
+   @(posedge (clk));
+   #1
+   wait (op_done);
+   for (integer i = 0; i < list_exp.size(); i = i + 1) begin
+      sum_result += list_exp[i];
+   end
+   if(data_out == sum_result) begin
+      $display("%0t Sum: %0d",$realtime,data_out);
+   end else begin
+      $error("%0t Sum: %0d, Expected: %0d", $realtime, data_out, sum_result);
+      err_cnt = err_cnt + 1;
+   end
+   @(posedge (clk));
+   #1
+   op_en = 0;
+end
+endtask
+
 task direct_op_test();
 begin
    $display("Starting direct operation test");
@@ -319,17 +350,19 @@ begin
    read(1);
    read(2);
 
+   // sum operation
+   sum();
    // // Sort Ascending
-   // sort_acending();
+   sort_acending();
 
    // // Read after sort
-   // read_n_burst(3);
+   read_n_burst(3);
 
    // // Sort Descending
-   // sort_desending();
+   sort_desending();
 
    // // Read after sort
-   // read_n_burst(3);
+   read_n_burst(3);
 
 end
 endtask
