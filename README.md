@@ -57,7 +57,7 @@ git clone https://github.com/Weiyet/RTL_Data_Structure.git
 
 2️⃣ Directory Structure of Each Data Structure Module <br> 
 ````
-📦 \<data structure>/          # Data Structure Module as folder name <br>
+📦 <data structure>/          # Data Structure Module as folder name <br>
  ├── 📃 readme.md              # Documentation of waveform, modules IOs, parameter. <br>
  ├── 📂 src/                   # RTL Source Code <br>
  │    ├── 📃 rtl_list.f        # RTL file list required for the modules <br>    
