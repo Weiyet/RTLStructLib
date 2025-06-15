@@ -3,7 +3,7 @@
 // Module Name: adder
 // Create Date: 11/05/2025 01:58 AM
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Last Update: 08/06/2025 09:47 PM
+// Last Update: 15/06/2025 01:48 PM
 // Last Updated By: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Description: 
 // Additional Comments: 
@@ -32,7 +32,7 @@ module adder #(
     
     reg [LENGTH_WIDTH-1:0] cur_ptr;
     reg [STG_PTR_WIDTH-1:0] stg_ptr;
-    reg [DATA_WIDTH-1:0] output_stage[TOTAL_INPUT_INT-1:0][NO_OF_STAGE-1:0];
+    reg [DATA_WIDTH-1:0] output_stage [NO_OF_STAGE-1:0][TOTAL_INPUT_INT-1:0];
 
     generate 
     if(SUM_METHOD == 0) begin  //: parallel sum (Combo) 
@@ -50,7 +50,7 @@ module adder #(
     end else if(SUM_METHOD == 1) begin //: sequential sum (
         always @(posedge clk, posedge rst) begin
             if(rst) begin
-                sum_result <= 'b0;
+                sum_result <= 'd0;
                 cur_ptr <= 'b0;
                 sum_done <= 1'b0;
                 sum_in_progress <= 1'b0;
@@ -59,11 +59,11 @@ module adder #(
                 sum_in_progress <= 1'b0;
                 cur_ptr <= 'b0;
             end else if(sum_en & cur_ptr < (LENGTH-1)) begin
-                sum_result <= sum_result + data_in[cur_ptr*DATA_WIDTH +: DATA_WIDTH];
+                sum_result <= sum_result + data_in[cur_ptr];
                 cur_ptr <= cur_ptr + 'b1;
                 sum_in_progress <= 1'b1;
-            end else if(sum_en & !sum_done & cur_ptr == (LENGTH-1))begin
-                sum_result <= sum_result + data_in[cur_ptr*DATA_WIDTH +: DATA_WIDTH];
+            end else if(sum_en & !sum_done & cur_ptr == (LENGTH-1))begin //last element
+                sum_result <= sum_result + data_in[cur_ptr];
                 sum_done <= 1'b1;
                 sum_in_progress <= 1'b0;
             end
@@ -83,7 +83,7 @@ module adder #(
             if(rst) begin
                 for(i=1; i<NO_OF_STAGE; i=i+1) begin
                     for(j=0; j<TOTAL_INPUT_INT; j=j+1) begin 
-                        output_stage[i][j] <= 'b0;
+                        output_stage[i][j] <= 'd0;
                     end
                 end
             end else if(!sum_en) begin
@@ -101,6 +101,7 @@ module adder #(
         always @ (posedge clk, posedge rst) begin
             if(rst) begin
                 stg_ptr <= 'b0;
+                sum_result <= 'd0;
                 sum_done <= 1'b0;
                 sum_in_progress <= 1'b0;
             end else if(!sum_en) begin
@@ -110,8 +111,8 @@ module adder #(
             end else if(sum_en & stg_ptr < (NO_OF_STAGE-1)) begin
                 stg_ptr <= stg_ptr + 'b1;
                 sum_in_progress <= 1'b1;
-            end else if(sum_en & !sum_done & stg_ptr == (NO_OF_STAGE-1)) begin
-                stg_ptr <= output_stage[NO_OF_STAGE-1][0];
+            end else if(sum_en & !sum_done & stg_ptr == (NO_OF_STAGE-1)) begin //last stage
+                sum_result <= output_stage[NO_OF_STAGE-1][0];
                 sum_in_progress <= 1'b0;
                 sum_done <= 1'b1;
             end

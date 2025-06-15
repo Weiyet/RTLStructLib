@@ -274,7 +274,7 @@ module list #(
           SUM: if(sum_done) begin
                    current_state <= ACCESS_DONE;
                    data_out <= sum_result;
-                   op_done <= 1'b0;
+                   op_done <= 1'b1;
                    op_in_progress <= 1'b0;
                    op_error <= 1'b0;
                    sum_en <= 1'b0;
