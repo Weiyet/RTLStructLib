@@ -2,7 +2,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 // Create Date: 09/22/2024 01:42:52 PM
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Last Update: 13/06/2025 09:23 PM
+// Last Update: 15/06/2025 01:29 PM
 // Last Updated By: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Module Name: tb
 // Description: Supported Operation 
@@ -57,6 +57,8 @@ wire [DUT_DATA_WIDTH+LENGTH_WIDTH-1:0] data_out; // Data out for Read and Insert
 wire op_done; // Operation done flag
 wire op_in_progress; // Operation in progress flag
 wire op_error; // Operation error flag
+wire [$clog2(DUT_LENGTH+1)-1:0] len; // Current length of the list
+
 
 
 `ifdef XILINX_GLS
@@ -78,7 +80,8 @@ wire op_error; // Operation error flag
       /*output reg  [LENGTH_WIDTH+DATA_WIDTH-1:0]*/.data_out(data_out),  
       /*output reg                               */.op_done(op_done),
       /*output reg                               */.op_in_progress(op_in_progress),
-      /*output reg                               */.op_error(op_error)
+      /*output reg                               */.op_error(op_error),
+      /*output wire                              */.len(len)
    );
     
 always #(TB_CLK_PERIOD/2) clk = ~clk; 
@@ -99,7 +102,7 @@ begin
    for (integer i = 0; i < list_exp.size(); i = i + 1) begin
       if(value == list_exp[i]) begin
          temp.push_back(i);
-         $display("%0t value %0d is found at Index %0d", $realtime, value, i);
+         //$display("%0t Value %0d is found at Index %0d", $realtime, value, i);
       end
    end
 end
@@ -107,7 +110,7 @@ endtask
 
 task read (input integer index);
 begin
-   $display("%0t OP_Read at index %0d", $realtime,index); 
+   $display("\n%0t OP_Read at index %0d", $realtime,index); 
    @(posedge (clk));
    #1 
    op_sel = OP_Read;  
@@ -145,7 +148,7 @@ integer count = 0;
 
 task read_n_burst(input integer n);
 begin
-   $display("%0t OP_Read burst %d time", $realtime,n); 
+   $display("\n%0t OP_Read burst %0d time", $realtime,n); 
    count = 0;
    @(posedge (clk));
    #1 
@@ -186,7 +189,7 @@ endtask
 
 task insert(input integer index, input integer value);
 begin
-   $display("%0t OP_Insert at index %d, value %d", $realtime,index,value); 
+   $display("\n%0t OP_Insert at index %0d, value %0d", $realtime,index,value); 
    @(posedge (clk));
    #1 
    op_sel = OP_Insert;  
@@ -214,6 +217,10 @@ begin
          list_exp.insert(index, value);
       end
    end
+   if(len!= list_exp.size()) begin
+      $error("%0t Length mismatch: Expected %0d, Got %0d", $realtime, list_exp.size(), len);
+      err_cnt = err_cnt + 1;
+   end 
    @(posedge (clk));
    #1
    op_en = 0;
@@ -223,7 +230,7 @@ endtask
 
 task delete(input integer index);
 begin
-    $display("%0t OP_Delete at index %d", $realtime,index); 
+    $display("\n%0t OP_Delete at index %0d", $realtime,index); 
     @(posedge (clk));
     #1 
     op_sel = OP_Delete;  
@@ -246,6 +253,10 @@ begin
        end
        list_exp.delete(index);
     end
+    if(len!= list_exp.size()) begin
+       $error("%0t Length mismatch: Expected %0d, Got %0d", $realtime, list_exp.size(), len);
+       err_cnt = err_cnt + 1;
+    end 
     @(posedge (clk));
     #1
     op_en = 0;
@@ -256,7 +267,7 @@ endtask
 task sort_acending();
 begin
    int temp;
-   $display("%0t OP_Sort_Asc Request", $realtime); 
+   $display("\n%0t OP_Sort_Asc Request", $realtime); 
    @(posedge (clk));
    #1 
    op_sel = OP_Sort_Asc;  
@@ -284,7 +295,7 @@ endtask
 task sort_desending();
 begin
    int temp;
-   $display("%0t OP_Sort_Des Request", $realtime); 
+   $display("\n%0t OP_Sort_Des Request", $realtime); 
    @(posedge (clk));
    #1 
    op_sel = OP_Sort_Des;  
@@ -313,7 +324,7 @@ integer sum_result = 0;
 
 task sum();
 begin
-   $display("%0t OP_Sum Request", $realtime);
+   $display("\n%0t OP_Sum Request", $realtime);
    @(posedge (clk));
    #1
    op_sel = OP_Sum;
@@ -336,33 +347,133 @@ begin
 end
 endtask
 
+task find_1st_index(input integer value);
+begin
+   $display("\n%0t OP_Find_1st_index for value %0d", $realtime, value);
+   @(posedge (clk));
+   #1
+   op_sel = OP_Find_1st_index;
+   op_en = 1;
+   data_in = value;
+   @(posedge (clk));
+   #1
+   wait (op_done);
+   find_index(value); // -> temp
+   if(temp.size() > 0) begin
+      if(data_out == temp[0]) begin
+         $display("%0t First index of value %0d is %0d", $realtime, value, data_out);
+      end else begin
+         $error("%0t First index of value %0d is %0d, Expected: %0d", $realtime, value, data_out, temp[0]);
+         err_cnt = err_cnt + 1;
+      end
+   end else begin
+      if(op_error) begin
+         $display("%0t Value %0d not found, fault flag is asserted correctly",$realtime,value);
+      end else begin
+         $error("%0t Value %0d not found, fault flag is not asserted",$realtime,value);
+         err_cnt = err_cnt + 1;
+      end
+   end
+   @(posedge (clk));
+   #1
+   op_en = 0;
+end
+endtask
+
+integer data_out_cnt;
+
+task find_all_index(input integer value);
+begin
+   $display("\n%0t OP_Find_all_index for value %0d", $realtime, value);
+   @(posedge (clk));
+   #1
+   op_sel = OP_Find_all_index;
+   op_en = 1;
+   data_in = value;
+   find_index(value); // -> temp
+   data_out_cnt = 0;
+   @(posedge (clk));
+   #1;
+   if (temp.size() == 0) begin
+      wait (op_done);
+      if(op_error) begin
+         $display("%0t Value %0d not found, fault flag is asserted correctly",$realtime,value);
+      end else begin
+         $error("%0t Value %0d not found, fault flag is not asserted",$realtime,value);
+         err_cnt = err_cnt + 1;
+      end
+   end else begin 
+      while (data_out_cnt < temp.size()) begin
+         if(op_done) begin
+            if(temp[data_out_cnt] == data_out) begin
+               $display("%0t Value %0d is found at index %0d", $realtime, value, data_out);
+            end else begin
+               $error("%0t Value %0d should be found at index %0d but index %0d is reported by DUT", $realtime, value, temp[data_out_cnt], data_out);
+               err_cnt = err_cnt + 1;
+            end
+            data_out_cnt = data_out_cnt + 1;
+         end
+         if((data_out_cnt < (temp.size()-1)) & !op_in_progress) begin
+            $display("%0t OP_Find_all_index All index is not found yet, but op_in_progress is deasserted incorrectly", $realtime);
+            data_out_cnt = temp.size(); // Icarus does not support "break" statement, use assignment to force exit loop
+         end else if((data_out_cnt == (temp.size()-1)) & !op_in_progress) begin
+            $display("%0t OP_Find_all_index All index is found, but op_in_progress is asserted incorrectly", $realtime);
+         end
+         if(op_error) begin
+            $error("%0t fault flag is asserted incorrectly",$realtime);
+            err_cnt = err_cnt + 1;
+         end
+         @(posedge (clk));
+         #1;
+      end
+   end
+   op_en = 0;
+end
+endtask
+
 task direct_op_test();
 begin
    $display("Starting direct operation test");
 
    // Insert operation
-   insert($urandom_range(0,2**DUT_DATA_WIDTH-1), 0);
-   insert($urandom_range(0,2**DUT_DATA_WIDTH-1), 1);
-   insert($urandom_range(0,2**DUT_DATA_WIDTH-1), 2); // Out of bound insert
+   insert(0,$urandom_range(0,2**DUT_DATA_WIDTH-1)); 
+   insert(1,$urandom_range(0,2**DUT_DATA_WIDTH-1));
+   insert(2,$urandom_range(0,2**DUT_DATA_WIDTH-1)); 
+   //insert(0,1);
+   //insert(1,2);
+   //insert(2,3);
+   insert(3,list_exp[2]);
+   insert(2,list_exp[0]);
    
    // Read operation
    read(0);
    read(1);
    read(2);
+   read(3);
+   read(4); 
+   read(5); // Read out of bound, should assert fault flag
+
+   delete(5); // Delete out of bound, should assert fault flag
+   delete(3); 
 
    // sum operation
    sum();
-   // // Sort Ascending
+
+   // Sort Ascending
    sort_acending();
+   // Read after sort
+   read_n_burst(4);
 
-   // // Read after sort
-   read_n_burst(3);
-
-   // // Sort Descending
+   // Sort Descending
    sort_desending();
+   // Read after sort
+   read_n_burst(4);
 
-   // // Read after sort
-   read_n_burst(3);
+   // Find 1st index
+   find_1st_index(list_exp[1]);
+
+   // Find all index
+   find_all_index(list_exp[2]);
 
 end
 endtask
@@ -380,7 +491,7 @@ initial begin
         $dumpvars(vcdlevel,tb);
     if ($value$plusargs("SEED=%d",seed)) begin
         temp = $urandom(seed);
-        $display("Seed = %d",seed);
+        $display("Seed = %0d",seed);
     end
     #100;
     rst = 1'b0;
@@ -390,7 +501,7 @@ initial begin
     
     if (err_cnt > 0) begin
         $display("\n%0t TEST FAILED",$realtime);
-        $display("Error count = %d\n", err_cnt);
+        $display("Error count = %0d\n", err_cnt);
     end else
         $display("\n%0t TEST PASSED\n", $realtime);
     $finish;
