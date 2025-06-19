@@ -1,4 +1,4 @@
-# List Module (Development in Progress)
+# List Module 
 
 ## Overview
 The List module is a versatile data storage and manipulation component implemented in Verilog. It provides various operations for managing and processing data, including reading, writing, summing, and sorting functionalities. This module can be particularly useful in FPGA designs requiring data buffering, accumulation, or processing.
@@ -45,17 +45,18 @@ list #(
 
 ## IO Ports
 
-| Port      | Direction | Width                         | Description                               |
-|-----------|-----------|-------------------------------|-------------------------------------------|
-| clk       | input     | 1                             | System clock                              |
-| rst       | input     | 1                             | Reset signal (active high)                |
-| op_sel    | input     | 2                             | Operation selector                        |
-| op_en     | input     | 1                             | Operation enable                          |
-| data_in   | input     | DATA_WIDTH                    | Input data for write operations           |
-| index_in  | input     | LENGTH_WIDTH                  | Index for read/write operations           |
-| data_out  | output    | LENGTH_WIDTH+DATA_WIDTH       | Output data                               |
-| op_done   | output    | 1                             | Operation completion indicator            |
-| op_error  | output    | 1                             | Operation error indicator                 |
+| Port           | Direction | Width                         | Description                               |
+|----------------|-----------|-------------------------------|-------------------------------------------|
+| clk            | input     | 1                             | System clock                              |
+| rst            | input     | 1                             | Reset signal (active high)                |
+| op_sel         | input     | 2                             | Operation selector                        |
+| op_en          | input     | 1                             | Operation enable                          |
+| data_in        | input     | DATA_WIDTH                    | Input data for write operations           |
+| index_in       | input     | LENGTH_WIDTH                  | Index for read/write operations           |
+| data_out       | output    | LENGTH_WIDTH+DATA_WIDTH       | Output data                               |
+| op_done        | output    | 1                             | Operation completion indicator            |
+| op_in_progress | output    | 1                           | Operation is in progress                  |
+| op_error       | output    | 1                             | Operation error indicator                 |
 
 ## Operation Codes
 
