@@ -2,3 +2,5 @@
 *.log
 *.vcd
 *.sim
+XilinxUnisimLibrary
+*netlist.v

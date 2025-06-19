@@ -3,7 +3,7 @@
 // Module Name: list
 // Create Date: 07/05/2025 07:51 AM
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Last Update: 15/06/2025 01:27 PM
+// Last Update: 19/06/2025 07:57 PM
 // Last Updated By: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Description: List 
 // Additional Comments: 
@@ -40,8 +40,10 @@ module list #(
     localparam ACCESS_DONE = 3'b100;
     
     reg [$clog2(LENGTH+1)-1:0]       data_count;
-    reg [LENGTH-1:0][DATA_WIDTH-1:0] data_stored; // could implement with RAM for large size of data
+    reg [DATA_WIDTH-1:0]             data_stored [LENGTH-1:0]; // could implement with RAM for large size of data
     reg [DATA_WIDTH*LENGTH-1:0]      data_stored_packed;
+    reg [DATA_WIDTH*LENGTH-1:0]      data_sorted_packed;
+    reg [DATA_WIDTH-1:0]             data_sorted_unpacked [LENGTH-1:0]; // could implement with RAM for large size of data
     reg [LENGTH_WIDTH-1:0]           cur_ptr;
     reg [2:0]                        current_state;
     reg                              found;
@@ -64,7 +66,7 @@ module list #(
     reg                                sort_order;
     wire                               sort_done;
     wire                               sort_in_progress;
-    wire [LENGTH-1:0][DATA_WIDTH-1:0]  data_sorted;
+    reg [DATA_WIDTH-1:0]  data_sorted [LENGTH-1:0];
   
     integer i;
     
@@ -77,9 +79,18 @@ module list #(
     assign op_is_sort_des       = (op_sel == 3'b110) & op_en;
     assign op_is_delete         = (op_sel == 3'b111) & op_en; 
     
-//    always @ (*) begin
-//        data_stored_packed = {<< DATA_WIDTH {data_stored}};
-//    end
+    // icarus does not support streaming packing, so we need to do it manually
+    // always @ (*) begin
+    //     data_stored_packed = {>> DATA_WIDTH {data_stored}};
+    // end 
+    always @(*) begin
+        for (i = 0; i < LENGTH; i = i + 1) begin
+            data_stored_packed[i*DATA_WIDTH +: DATA_WIDTH] = data_stored[i];
+        end
+    end
+    // icarus does not support streaming packing, so we need to do it manually
+    
+    
     assign len = data_count;
 
      adder #(.DATA_WIDTH(DATA_WIDTH), 
@@ -87,7 +98,7 @@ module list #(
              .SUM_METHOD(SUM_METHOD))
      u_adder (.clk(clk),
               .rst(rst),
-              .data_in(data_stored), 
+              .data_in(data_stored_packed), 
               .sum_en(sum_en),
               .sum_result(sum_result),
               .sum_done(sum_done),
@@ -97,13 +108,24 @@ module list #(
              .LENGTH(LENGTH))
     u_sorter (.clk(clk),
             .rst(rst),
-            .data_in(data_stored),
+            .data_in(data_stored_packed),
             .len(data_count),
             .sort_en(sort_en),
             .sort_order(sort_order), 
             .sort_done(sort_done),
             .sort_in_progress(sort_in_progress),
-            .data_sorted(data_sorted));
+            .data_sorted(data_sorted_packed));
+    
+    // icarus does not support streaming unpacking, so we need to do it manually
+    // always @ (*) begin
+    //     data_sorted_unpacked = { >> DATA_WIDTH {data_sorted_packed}};
+    // end 
+    always @(*) begin
+        for (i = 0; i < LENGTH; i = i + 1) begin
+            data_sorted_unpacked[i] = data_sorted_packed[i*DATA_WIDTH +: DATA_WIDTH];
+        end
+    end
+    // icarus does not support streaming unpacking, so we need to do it manually
     
     always @ (posedge clk, posedge rst) begin
        if(rst) begin
@@ -112,7 +134,7 @@ module list #(
           op_done <= 1'b0;
           op_in_progress <= 1'b0;
           op_error <= 1'b0;
-          data_out <= 'b0;
+          data_out <= 'd0;
           cur_ptr <= 'b0;
           found <= 1'b0;
           data_count <= {(LENGTH_WIDTH){1'b0}};
@@ -136,13 +158,16 @@ module list #(
                         op_error <= 1'b0;
                     end else begin
                         current_state <= ACCESS_DONE; //insert data at index_in
-                        for(i = LENGTH-1; i >= 0; i = i - 1) begin
+                        for(i = LENGTH-1; i > 0; i = i - 1) begin
                             if(i == index_in) begin
                                 data_stored[i] <= data_in; //insert data at index_in
                             end else if(i > index_in) begin
                                 data_stored[i] <= data_stored[i-1]; //shift right
                             end
                         end
+                        // yosys will report an error for indexing when i = 0 for data_stored[i-1] (although it will not be executed in this case, even with proper if condition)
+                        // so we need to handle the case when i = 0 separately
+                        data_stored[0] <= index_in == 0 ? data_in : data_stored[0]; //if index_in is 0, insert at index 0
                         data_count <= data_count + 1; //increment data count
                         op_done <= 1'b1;
                         op_error <= 1'b0;
@@ -200,13 +225,16 @@ module list #(
                         op_error <= 1'b1;
                     end else begin
                         current_state <= ACCESS_DONE; //delete data at index_in
-                        for(i = 0; i <= LENGTH-1; i = i + 1) begin
+                        for(i = 0; i < LENGTH-1; i = i + 1) begin
                             if(i == (data_count-1)) begin
                                 data_stored[i] <= 0; //delete data at index_in
                             end else if(i >= index_in & (i+1) <= (LENGTH-1)) begin
                                 data_stored[i] <= data_stored[i+1]; //shift left
                             end 
                         end
+                        // yosys will report an error for indexing when i+1 = LENGTH-1 for data_stored[i+1] (although it will not be executed in this case, even with proper if condition)
+                        // so we need to handle the case when i+1 = LENGTH-1 separately
+                        data_stored[LENGTH-1] <= 'd0; //always clear the last element 
                         data_count <= data_count - 1; //decrement data count
                         op_done <= 1'b1;
                         op_error <= 1'b0;
@@ -222,9 +250,9 @@ module list #(
                    op_in_progress <= 1'b0;
                    sum_en <= 1'b0;
                    sort_en <= 1'b0;
+                   found <= 1'b0;
+                   cur_ptr <= 'b0;
                 end
-                found <= 1'b0;
-                cur_ptr <= 'b0;
             end
           SEARCH_1ST: begin
                     if(data_stored[cur_ptr] == data_in) begin
@@ -266,7 +294,10 @@ module list #(
           SORT: if(sort_done) begin
                    current_state <= ACCESS_DONE;
                    op_done <= 1'b1;
-                   data_stored <= data_sorted;
+                   // data_stored <= data_sorted_unpacked; // icarus does not support direct assignment of 2d array....
+                   for (i = 0; i < LENGTH; i = i + 1) begin
+                      data_stored[i] <= data_sorted_unpacked[i];
+                   end
                    op_in_progress <= 1'b0;
                    op_error <= 1'b0;
                    sort_en <= 1'b0;

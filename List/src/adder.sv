@@ -3,7 +3,7 @@
 // Module Name: adder
 // Create Date: 11/05/2025 01:58 AM
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Last Update: 15/06/2025 01:48 PM
+// Last Update: 19/06/2025 09:25 PM
 // Last Updated By: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Description: 
 // Additional Comments: 
@@ -19,7 +19,7 @@ module adder #(
 )(
     input  wire                               clk,
     input  wire                               rst,
-    input  wire [LENGTH-1:0][DATA_WIDTH-1:0]  data_in,
+    input  wire [LENGTH*DATA_WIDTH-1:0]       data_in,
     input  wire                               sum_en,
     output reg  [LENGTH_WIDTH+DATA_WIDTH-1:0] sum_result,
     output reg                                sum_done,
@@ -30,19 +30,31 @@ module adder #(
     localparam STG_PTR_WIDTH = $clog2(NO_OF_STAGE);
     localparam TOTAL_INPUT_INT = 2**NO_OF_STAGE; // round up to integer, LENGTH needs not to be in power of 2. 
     
-    reg [LENGTH_WIDTH-1:0] cur_ptr;
+    reg [DATA_WIDTH-1:0]    data_in_unpacked [LENGTH-1:0]; 
+    reg [LENGTH_WIDTH-1:0]  cur_ptr;
     reg [STG_PTR_WIDTH-1:0] stg_ptr;
-    reg [DATA_WIDTH-1:0] output_stage [NO_OF_STAGE-1:0][TOTAL_INPUT_INT-1:0];
+    reg [DATA_WIDTH-1:0]    output_stage [NO_OF_STAGE-1:0][TOTAL_INPUT_INT-1:0];
+    integer i,j;
+
+    // icarus does not support stream unpacking, so we need to do it mannually
+    // always @ (*) begin
+    //    data_in_unpacked = { >> DATA_WIDTH {data_in}};
+    // end 
+    always @(*) begin
+        for (i = 0; i < LENGTH; i = i + 1) begin
+            data_in_unpacked[i] = data_in[i*DATA_WIDTH +: DATA_WIDTH];
+        end
+    end
+    // icarus does not support stream unpacking, so we need to do it mannually
 
     generate 
     if(SUM_METHOD == 0) begin  //: parallel sum (Combo) 
-        integer i;
         always @(*) begin
             for(i=0; i<LENGTH; i=i+1) begin
                 if(i == 0) 
-                    sum_result = data_in[i];
+                    sum_result = data_in_unpacked[i];
                 else 
-                    sum_result = sum_result + data_in[i];
+                    sum_result = sum_result + data_in_unpacked[i];
             end
             sum_done = sum_en;
             sum_in_progress = 1'b0;
@@ -59,21 +71,20 @@ module adder #(
                 sum_in_progress <= 1'b0;
                 cur_ptr <= 'b0;
             end else if(sum_en & cur_ptr < (LENGTH-1)) begin
-                sum_result <= sum_result + data_in[cur_ptr];
+                sum_result <= sum_result + data_in_unpacked[cur_ptr];
                 cur_ptr <= cur_ptr + 'b1;
                 sum_in_progress <= 1'b1;
             end else if(sum_en & !sum_done & cur_ptr == (LENGTH-1))begin //last element
-                sum_result <= sum_result + data_in[cur_ptr];
+                sum_result <= sum_result + data_in_unpacked[cur_ptr];
                 sum_done <= 1'b1;
                 sum_in_progress <= 1'b0;
             end
         end
     end else begin //: ADDER TREE
-        integer i,j;
         always @ (*) begin
             for(i=0; i<TOTAL_INPUT_INT; i=i+1) begin
                 if(i<LENGTH) 
-                    output_stage[0][i] <= data_in[i];
+                    output_stage[0][i] <= data_in_unpacked[i];
                 else
                     output_stage[0][i] <= 'b0;    
             end
