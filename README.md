@@ -31,7 +31,7 @@ By using these pre-built RTL modules, engineers can accelerate development, redu
 - Singly Linked List – Efficient memory utilization, dynamic data handling <br>
 - Doubly Linked List – Bi-directional traversal support <br>
 - Table - Indexed storage mechanism, similar to a register file, enabling rapid direct access and simultaneous read write access to data without hashing. <br>
-- List (WIP) - Support sorting, find_index, delete, insert operations <br>
+- List - Support sorting, find_index, delete, insert operations <br>
 - Circular Linked List （WIP） 
 - Hash Table – Optimized for high-speed lookups, currently only supports modulus hashing and simple multi-staged chaining to handle collision <br>
 - Systolic Array (WIP) - Organizes processing elements in a regular grid where data flows rhythmically, enabling parallel computation. <br>
