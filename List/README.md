@@ -55,7 +55,7 @@ list #(
 | index_in       | input     | LENGTH_WIDTH                  | Index for read/write operations           |
 | data_out       | output    | LENGTH_WIDTH+DATA_WIDTH       | Output data                               |
 | op_done        | output    | 1                             | Operation completion indicator            |
-| op_in_progress | output    | 1                           | Operation is in progress                  |
+| op_in_progress | output    | 1                             | Operation is in progress                  |
 | op_error       | output    | 1                             | Operation error indicator                 |
 
 ## Operation Codes
