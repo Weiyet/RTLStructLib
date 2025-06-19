@@ -1,20 +1,17 @@
 .PHONY: sim gen_sim synth netlist_sim gen_netlist_sim clean 
 
-# DUT ?= hash_table
-# SIM_OPTS ?= ../../src/hash_table.sv
+DUT ?= list
+SRC_DIR = ../../src
+SIM_OPTS ?= $(addprefix $(SRC_DIR)/, $(shell cat ../../src/rtl_src.f))
 SEED ?= $$(shuf -i 1-10000 -n 1)
 
 # DUT parameter #"-p" iverilog command flags
-# COMPILE_ARGS = -P tb.DUT_KEY_WIDTH=32
-# COMPILE_ARGS += -P tb.DUT_VALUE_WIDTH=32
-# COMPILE_ARGS += -P tb.DUT_TOTAL_INDEX=8
-# COMPILE_ARGS += -P tb.DUT_CHAINING_SIZE=4
-#ICARUS does not support passing with string type. 
-#COMPILE_ARGS += -P tb.DUT_COLLISION_METHOD=MULTI_STAGE_CHAINING
-#COMPILE_ARGS += -P tb.DUT_HASH_ALGORITHM=MODULUS
-# COMPILE_ARGS += -P tb.TB_CLK_PERIOD=100
-# COMPILE_ARGS += -P tb.TB_TEST_WEIGHT=1 
-# COMPILE_ARGS += -P tb.TB_SIM_TIMEOUT=30 #//ms.
+COMPILE_ARGS ?= -p DUT_DATA_WIDTH=8 
+COMPILE_ARGS += -p DUT_LENGTH=8 
+COMPILE_ARGS += -p DUT_SUM_METHOD=0 
+COMPILE_ARGS += -P tb.TB_CLK_PERIOD=100
+COMPILE_ARGS += -P tb.TB_TEST_WEIGHT=1 
+COMPILE_ARGS += -P tb.TB_SIM_TIMEOUT=30 #//ms.
 
 XILINX_LIB_URL ?= https://github.com/Xilinx/XilinxUnisimLibrary.git
 XILINX_LIB_DIR ?= XilinxUnisimLibrary/verilog/src
@@ -36,7 +33,15 @@ gen_netlist_sim: tb.sv ${DUT}.netlist.v | ${XILINX_LIBS_DIR}/.git
 	iverilog -g2012 -s tb -y ${XILINX_LIB_DIR} -y ${XILINX_LIB_DIR}/unisims -DXILINX_GLS ${COMPILE_ARGS} -o ${DUT}.netlist.sim $^
 
 ${XILINX_LIBS_DIR}/.git:
-	git clone ${XILINX_LIB_URL}
+	@echo "XILINX_LIBS_DIR = ${XILINX_LIBS_DIR}"
+	@echo "XILINX_LIB_URL = ${XILINX_LIB_URL}"
+	@echo "Checking if XilinxUnisimLibrar/.git exists..."
+	@if [ ! -d "XilinxUnisimLibrary/.git" ]; then \
+		echo "Directory XilinxUnisimLibrar/.git does not exist, cloning..."; \
+		git clone ${XILINX_LIB_URL}; \
+	else \
+		echo "Xilinx library already cloned"; \
+	fi
 
 clean:
 	rm -f ${DUT}_sim sim.log sim.vcd
