@@ -31,6 +31,7 @@ list #(
     .index_in(index_in),
     .data_out(data_out),
     .op_done(op_done),
+    .op_in_progress(op_in_progress),
     .op_error(op_error)
 );
 ```
