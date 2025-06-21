@@ -5,13 +5,13 @@ SRC_DIR = ../../src
 SIM_OPTS ?= $(addprefix $(SRC_DIR)/, $(shell cat ../../src/rtl_src.f))
 SEED ?= $$(shuf -i 1-10000 -n 1)
 
-# DUT parameter #"-p" iverilog command flags
-COMPILE_ARGS ?= -p DUT_DATA_WIDTH=8 
-COMPILE_ARGS += -p DUT_LENGTH=8 
-COMPILE_ARGS += -p DUT_SUM_METHOD=0 
-COMPILE_ARGS += -P tb.TB_CLK_PERIOD=100
-COMPILE_ARGS += -P tb.TB_TEST_WEIGHT=1 
-COMPILE_ARGS += -P tb.TB_SIM_TIMEOUT=30 #//ms.
+# DUT parameter #"-P" iverilog command flags
+COMPILE_ARGS ?= -P DUT_DATA_WIDTH=8 
+COMPILE_ARGS += -P DUT_LENGTH=8 
+COMPILE_ARGS += -P DUT_SUM_METHOD=0 
+COMPILE_ARGS += -P TB_CLK_PERIOD=100
+COMPILE_ARGS += -P TB_TEST_WEIGHT=1 
+COMPILE_ARGS += -P TB_SIM_TIMEOUT=30 #//ms.
 
 XILINX_LIB_URL ?= https://github.com/Xilinx/XilinxUnisimLibrary.git
 XILINX_LIB_DIR ?= XilinxUnisimLibrary/verilog/src
