@@ -13,7 +13,7 @@
 </div>
 
 # RTLStructLib
-Highly optimized, synthesizable data structures module/IP library for hardware design
+Highly optimized (trying my best), synthesizable data structures module/IP library for hardware design
 
 ### Overview
 RTLStructlib is an open-source project providing a collection of synthesizable RTL data structures implemented at the Register-Transfer Level (RTL). These modules are designed for high performance, scalability, and ease of integration into digital systems, serving as a standard library for FPGA and ASIC engineers.
