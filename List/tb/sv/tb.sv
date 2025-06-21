@@ -29,10 +29,10 @@ module tb(
     // TB parameter
     localparam TB_CLK_PERIOD = 25;
     localparam TB_TEST_WEIGHT = 1;
-    localparam SIM_TIMEOUT = 500000;
+    localparam TB_SIM_TIMEOUT = 500000;
 
 localparam LENGTH_WIDTH =  $clog2(DUT_LENGTH);
-localparam DATA_OUT_WIDTH = LENGTH_WIDTH+DUT_DATA_WIDTH-1;
+localparam DATA_OUT_WIDTH = LENGTH_WIDTH+DUT_DATA_WIDTH;
 
 localparam OP_Read = 3'b000; 
 localparam OP_Insert = 3'b001;
@@ -211,7 +211,7 @@ begin
          $error("%0t fault flag is asserted incorrectly",$realtime);
          err_cnt = err_cnt + 1;
       end
-      if(index > list_exp.size()) begin
+      if(index >= list_exp.size()) begin
          list_exp.push_back(value); // Insert at the end if index is out of bound
       end else begin
          list_exp.insert(index, value);
@@ -413,12 +413,11 @@ begin
             end
             data_out_cnt = data_out_cnt + 1;
          end
-         if((data_out_cnt < (temp.size()-1)) & !op_in_progress) begin
-            $display("%0t OP_Find_all_index All index is not found yet, but op_in_progress is deasserted incorrectly", $realtime);
+         if((data_out_cnt <= (temp.size()-1)) & !op_in_progress) begin
+            $error("%0t OP_Find_all_index All index is not found yet, but op_in_progress is deasserted incorrectly", $realtime);
+            err_cnt = err_cnt + 1;
             data_out_cnt = temp.size(); // Icarus does not support "break" statement, use assignment to force exit loop
-         end else if((data_out_cnt == (temp.size()-1)) & !op_in_progress) begin
-            $display("%0t OP_Find_all_index All index is found, but op_in_progress is asserted incorrectly", $realtime);
-         end
+         end 
          if(op_error) begin
             $error("%0t fault flag is asserted incorrectly",$realtime);
             err_cnt = err_cnt + 1;
@@ -462,12 +461,12 @@ begin
    // Sort Ascending
    sort_acending();
    // Read after sort
-   read_n_burst(4);
+   read_n_burst(5);
 
    // Sort Descending
    sort_desending();
    // Read after sort
-   read_n_burst(4);
+   read_n_burst(5);
 
    // Find 1st index
    find_1st_index(list_exp[1]);
@@ -508,7 +507,7 @@ initial begin
 end
 
 initial begin
-    #(SIM_TIMEOUT)
+    #(TB_SIM_TIMEOUT)
     $display("\n%0t TEST FAILED", $realtime);
     $display("SIM TIMEOUT!\n");
     $finish;

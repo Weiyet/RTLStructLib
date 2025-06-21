@@ -4,3 +4,7 @@
 *.sim
 XilinxUnisimLibrary
 *netlist.v
+__pycache__
+iverilog_dump.v
+results.xml
+sim_build
