@@ -2,13 +2,14 @@
 
 DUT ?= list
 SRC_DIR = ../../src
-SIM_OPTS ?= $(addprefix $(SRC_DIR)/, $(shell cat ../../src/rtl_src.f))
+SIM_OPTS ?= $(addprefix $(SRC_DIR)/, $(shell cat ../../src/rtl_list.f))
 SEED ?= $$(shuf -i 1-10000 -n 1)
 
 # DUT parameter #"-P" iverilog command flags
-COMPILE_ARGS ?= -P DUT_DATA_WIDTH=8 
-COMPILE_ARGS += -P DUT_LENGTH=8 
-COMPILE_ARGS += -P DUT_SUM_METHOD=0 
+# FIXME : Edit this to match your DUT parameters
+# COMPILE_ARGS ?= -P DUT_DATA_WIDTH=8 
+# COMPILE_ARGS += -P DUT_LENGTH=8 
+# COMPILE_ARGS += -P DUT_SUM_METHOD=0 
 COMPILE_ARGS += -P TB_CLK_PERIOD=100
 COMPILE_ARGS += -P TB_TEST_WEIGHT=1 
 COMPILE_ARGS += -P TB_SIM_TIMEOUT=30 #//ms.

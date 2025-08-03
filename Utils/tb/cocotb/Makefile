@@ -6,7 +6,7 @@ PWD=$(shell pwd)
 
 #export PYTHONPATH := $(PWD)/../model:$(PYTHONPATH)
 SRC_DIR ?= $(PWD)/../../src
-VERILOG_SOURCES ?= $(addprefix $(SRC_DIR)/, $(shell cat $(SRC_DIR)/rtl_src.f))
+VERILOG_SOURCES ?= $(addprefix $(SRC_DIR)/, $(shell cat $(SRC_DIR)/rtl_list.f))
 
 
 # DUT Top
