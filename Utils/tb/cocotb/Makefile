@@ -17,6 +17,10 @@ MODULE   = tb
 #use , separtor to run multiple TESTCASE, by default all @cocotb.test will be run
 #TESTCASE = index_op_test ， addr_op_test
 
+# FIXME : Edit this to match your DUT parameters
+# COMPILE_ARGS ?= -P DUT_DATA_WIDTH=8 
+# COMPILE_ARGS += -P DUT_LENGTH=8 
+# COMPILE_ARGS += -P DUT_SUM_METHOD=0
 COMPILE_ARGS ?= -P list.DATA_WIDTH=8 
 COMPILE_ARGS += -P list.LENGTH=8 
 COMPILE_ARGS += -P list.SUM_METHOD=0 
