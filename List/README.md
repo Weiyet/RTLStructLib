@@ -64,7 +64,7 @@ list #(
 | op_sel | Operation           | Description                              |
 |--------|---------------------|------------------------------------------|
 | 3'b000 | Read                | Read data from specified index           |
-| 3'b001 | Write               | Write data to specified index            |
+| 3'b001 | Insert              | Write data to specified index            |
 | 3'b010 | Find All Indices    | Find all indices matching data_in        |
 | 3'b011 | Find First Index    | Find first index matching data_in        |
 | 3'b100 | Sum                 | Calculate sum of all elements            |
@@ -82,3 +82,4 @@ The module implements a simple state machine with the following states:
 - The internal storage is implemented as a register array, which could be replaced with RAM for larger data sizes
 - The parallel sum implementation uses combinatorial logic
 - Sequential sum and adder tree implementations are placeholders in the current version
+
