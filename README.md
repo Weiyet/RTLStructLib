@@ -7,7 +7,7 @@
 ![Verilog](https://img.shields.io/badge/Verilog-IEEE_1364--2005-blue)
 ![SystemVerilog](https://img.shields.io/badge/SystemVerilog-IEEE_1800--2017-blue)
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![Version](https://img.shields.io/badge/Version-v1.0-green)
+![Version](https://img.shields.io/badge/Version-v1.1-green)
 ![Status](https://img.shields.io/badge/Status-In_Development-yellow)
   
 </div>
@@ -93,10 +93,9 @@ gtkwave <waveform.vcd>
 Include file list <Data structure>/src/rtl_list.f to your simulation or project.
 
 ### Work in Progress/Future Works 🚀
-🔹 Implementing Hash Table, Binary Tree, AVL Tree and more and more <br>
-🔹 Providing comprehensive test benches (TB) for verification <br>
-🔹 Exploring pyUVM for developing UVM & pyUVM agents <br>
+🔹 Implementing Hash Binary Tree, AVL Tree and more and more <br>
 🔹 Improving performance & adding more use cases <br>
+🔹 Study research paper and implement more hardware oriented algorithm or data streamline for HW data structure <br>
 
 ### Disclaimer 
 Hardware is often highly customized — these modules are designed as references, and you're encouraged to tweak them as needed (e.g., swap registers with RAM, adjust logic latency based on your STA, use content addressable RAM instead of RTL hash table).
