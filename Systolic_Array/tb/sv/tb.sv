@@ -12,6 +12,7 @@ module tb;
     parameter CLK_PERIOD = 10;
     parameter TB_TIMEOUT_CYCLES = 1000;
     parameter SIM_TIMEOUT = 1000000;
+    localparam ACT_BEATS = INPUT_SKEW ? K_DIM : K_DIM + ARRAY_ROWS - 1;
 
     reg clk = 0;
     reg rst_n = 0, start = 0;
@@ -78,6 +79,7 @@ module tb;
                     "simple": matrix_a[r][k] = r*K_DIM + k + 1;
                     "zero": matrix_a[r][k] = 0;
                     "signed": matrix_a[r][k] = ((r+k)%2) ? -(k+1) : k+1;
+                    "overflow": matrix_a[r][k] = SIGNED_MATH ? {1'b1, {(DATA_WIDTH-1){1'b0}}} : {DATA_WIDTH{1'b1}};
                     "limits": begin
                         case ((r+k)%4)
                             0: matrix_a[r][k] = SIGNED_MATH ? {1'b1, {(DATA_WIDTH-1){1'b0}}} : {DATA_WIDTH{1'b1}};
@@ -97,6 +99,7 @@ module tb;
                     "simple": matrix_b[k][c] = k*ARRAY_COLS + c + 1;
                     "identity": matrix_b[k][c] = (k == c);
                     "signed": matrix_b[k][c] = ((k+c)%2) ? -(c+1) : c+1;
+                    "overflow": matrix_b[k][c] = SIGNED_MATH ? {1'b1, {(WEIGHT_WIDTH-1){1'b0}}} : {WEIGHT_WIDTH{1'b1}};
                     "limits": begin
                         case ((k+c)%4)
                             0: matrix_b[k][c] = SIGNED_MATH ? {1'b1, {(WEIGHT_WIDTH-1){1'b0}}} : {WEIGHT_WIDTH{1'b1}};
@@ -165,7 +168,7 @@ module tb;
     endtask
 
     task automatic send_activation(input integer k, input bit gaps);
-        integer cycles, r, gap_count;
+        integer cycles, r, gap_count, matrix_k;
         bit accepted;
         if (gaps) begin
             gap_count = $urandom_range(1, 3);
@@ -177,8 +180,12 @@ module tb;
             end
         end
         @(negedge clk);
-        for (r = 0; r < ARRAY_ROWS; r = r + 1)
-            act_data[r*DATA_WIDTH +: DATA_WIDTH] = matrix_a[r][k];
+        for (r = 0; r < ARRAY_ROWS; r = r + 1) begin
+            matrix_k = INPUT_SKEW ? k : k - r;
+            act_data[r*DATA_WIDTH +: DATA_WIDTH] = 0;
+            if (matrix_k >= 0 && matrix_k < K_DIM)
+                act_data[r*DATA_WIDTH +: DATA_WIDTH] = matrix_a[r][matrix_k];
+        end
         act_valid = 1;
         accepted = 0;
         for (cycles = 0; cycles < TB_TIMEOUT_CYCLES && !accepted; cycles = cycles + 1) begin
@@ -190,7 +197,7 @@ module tb;
 
     task automatic stream_activations(input bit gaps);
         integer k;
-        for (k = 0; k < K_DIM; k = k + 1) send_activation(k, gaps);
+        for (k = 0; k < ACT_BEATS; k = k + 1) send_activation(k, gaps);
         @(negedge clk);
         act_valid = 0;
         act_data = 0;
@@ -282,8 +289,9 @@ module tb;
         reg [1023:0] vcdfile;
         if (ARRAY_ROWS < 1 || ARRAY_COLS < 1 || K_DIM < 1 ||
             DATA_WIDTH < 1 || WEIGHT_WIDTH < 1 || ACC_WIDTH < DATA_WIDTH + WEIGHT_WIDTH ||
-            TB_TIMEOUT_CYCLES < 1 || INPUT_SKEW != 1)
-            $fatal(1, "Invalid bench parameters; automatic input skewing is required");
+            TB_TIMEOUT_CYCLES < 1 || (INPUT_SKEW != 0 && INPUT_SKEW != 1) ||
+            (SIGNED_MATH != 0 && SIGNED_MATH != 1))
+            $fatal(1, "Invalid bench parameters");
         seed = 1;
         seed_dummy = $value$plusargs("SEED=%d", seed);
         $display("TB seed=%0d", seed);
@@ -303,7 +311,10 @@ module tb;
             if (SIGNED_MATH) run_case("signed", 0, 0);
             else if (selected_test == "signed") $fatal(1, "signed test requires SIGNED_MATH=1");
         end
-        if (selected_test == "all" || selected_test == "limits") run_case("limits", 0, 0);
+        if (selected_test == "all" || selected_test == "limits") begin
+            run_case("limits", 0, 0);
+            run_case("overflow", 0, 0);
+        end
         if (selected_test == "all" || selected_test == "input_gaps") run_case("random", 1, 0);
         if (selected_test == "all" || selected_test == "output_backpressure") run_case("random", 0, 1);
         if (selected_test == "all" || selected_test == "stalls") run_case("random", 1, 1);

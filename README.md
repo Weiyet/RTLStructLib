@@ -39,7 +39,7 @@ By using these pre-built RTL modules, engineers can accelerate development, redu
 - Circular Linked List （WIP） 
 - Hash Table – Optimized for high-speed lookups, currently only supports modulus hashing and simple multi-staged chaining to handle collision <br>
 - Dual Edge Flip Flop - Double input and output rate structure which can latch data on both rising and falling edge <br> 
-- Systolic Array (WIP) - Organizes processing elements in a regular grid where data flows rhythmically, enabling parallel computation. <br>
+- Systolic Array - Parameterized matrix multiplication with weight-stationary PEs, tiled reduction, and output backpressure. <br>
 - Binary Tree (WIP) – Fundamental structure for hierarchical data organization <br>
 - AVL Tree (WIP) – Self-balancing binary search tree for efficient operations <br>
 - And More and More and More (WIP)

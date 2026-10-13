@@ -24,6 +24,7 @@ module systolic_array_top #(
     localparam IDLE = 0, LOAD = 1, COMPUTE = 2, OUTPUT = 3, DONE = 4;
     localparam FAULT = `SELFTEST_FAULT;
     localparam OUTPUT_ROWS = ARRAY_ROWS + (FAULT == 3) - (FAULT == 2);
+    localparam ACT_BEATS = INPUT_SKEW ? K_DIM : K_DIM + ARRAY_ROWS - 1;
     integer state = IDLE;
     integer weight_count, act_count, output_count, stall_ticks;
     integer r, c, k;
@@ -71,10 +72,14 @@ module systolic_array_top #(
                     if (weight_count == K_DIM*ARRAY_ROWS - 1) state <= COMPUTE;
                 end
                 COMPUTE: if (act_valid && act_ready) begin
-                    for (r = 0; r < ARRAY_ROWS; r = r + 1)
-                        a[r][act_count] = act_data[r*DATA_WIDTH +: DATA_WIDTH];
+                    for (r = 0; r < ARRAY_ROWS; r = r + 1) begin
+                        if (INPUT_SKEW)
+                            a[r][act_count] = act_data[r*DATA_WIDTH +: DATA_WIDTH];
+                        else if (act_count >= r && act_count < K_DIM + r)
+                            a[r][act_count-r] = act_data[r*DATA_WIDTH +: DATA_WIDTH];
+                    end
                     act_count <= act_count + 1;
-                    if (act_count == K_DIM - 1) begin
+                    if (act_count == ACT_BEATS - 1) begin
                         for (r = 0; r < ARRAY_ROWS; r = r + 1) begin
                             for (c = 0; c < ARRAY_COLS; c = c + 1) begin
                                 total = 0;

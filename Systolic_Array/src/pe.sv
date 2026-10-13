@@ -29,7 +29,7 @@ module pe #(
 
     // Control signals
     input  wire                         enable,             // Enable PE operation
-    input  wire                         clear_acc,          // Clear accumulator
+    input  wire                         clear_acc,          // Clear psum and activation pipelines
     input  wire                         load_weight,        // Load weight register
 
     // Data inputs
@@ -101,6 +101,8 @@ module pe #(
     // Activation propagation (left to right) - 1 cycle delay
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
+            act_out <= {DATA_WIDTH{1'b0}};
+        end else if (clear_acc) begin
             act_out <= {DATA_WIDTH{1'b0}};
         end else if (enable) begin
             act_out <= act_in;

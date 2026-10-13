@@ -17,7 +17,8 @@ class MatrixBench:
         assert min(self.array_rows, self.array_cols, self.k_dim,
                    self.data_width, self.weight_width) > 0
         assert self.acc_width >= self.data_width + self.weight_width
-        assert self.input_skew == 1, "This suite requires automatic input skewing"
+        assert self.input_skew in (0, 1)
+        assert self.signed_math in (0, 1)
         self.seed = int(os.getenv("TB_SEED", "1"))
         self.rng = random.Random(self.seed)
         self.timeout = int(os.getenv("TB_TIMEOUT_CYCLES", "1000"))
@@ -76,6 +77,11 @@ class MatrixBench:
                  for row in range(self.array_rows)]
             b = [[bv[(k + col) % 4] for col in range(self.array_cols)]
                  for k in range(self.k_dim)]
+        elif kind == "overflow":
+            av = -(1 << (self.data_width - 1)) if self.signed_math else (1 << self.data_width) - 1
+            bv = -(1 << (self.weight_width - 1)) if self.signed_math else (1 << self.weight_width) - 1
+            a = [[av] * self.k_dim for _ in range(self.array_rows)]
+            b = [[bv] * self.array_cols for _ in range(self.k_dim)]
         return a, b
 
     async def reset(self):
@@ -137,10 +143,17 @@ class MatrixBench:
                 await self.send("weight", self.pack(row, self.weight_width), gaps)
         await self.finish_port("weight")
 
+    def activation_word(self, matrix_a, beat):
+        values = []
+        for row in range(self.array_rows):
+            k = beat if self.input_skew else beat - row
+            values.append(matrix_a[row][k] if 0 <= k < self.k_dim else 0)
+        return self.pack(values, self.data_width)
+
     async def stream_activations(self, matrix_a, gaps=False):
-        for k in range(self.k_dim):
-            await self.send("act", self.pack(
-                [row[k] for row in matrix_a], self.data_width), gaps)
+        beats = self.k_dim + (0 if self.input_skew else self.array_rows - 1)
+        for beat in range(beats):
+            await self.send("act", self.activation_word(matrix_a, beat), gaps)
         await self.finish_port("act")
 
     async def collect(self, expected, backpressure=False):
@@ -248,6 +261,7 @@ async def test_signed_values(dut):
 async def test_numeric_limits(dut):
     bench = await setup(dut)
     await bench.run("limits")
+    await bench.run("overflow")
 
 
 @cocotb.test(timeout_time=1, timeout_unit="ms")
@@ -292,6 +306,6 @@ async def test_reset_during_compute(dut):
     activations, weights = bench.matrices()
     await bench.start()
     await bench.load_weights(weights)
-    await bench.send("act", bench.pack([row[0] for row in activations], bench.data_width))
+    await bench.send("act", bench.activation_word(activations, 0))
     await bench.reset()
     await bench.run("simple")

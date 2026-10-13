@@ -13,6 +13,7 @@ CONFIGS = [
      "DATA_WIDTH": 5, "WEIGHT_WIDTH": 7, "ACC_WIDTH": 16, "SIGNED_MATH": 0},
     {"ARRAY_ROWS": 1, "ARRAY_COLS": 1, "K_DIM": 3,
      "DATA_WIDTH": 3, "WEIGHT_WIDTH": 4, "ACC_WIDTH": 7},
+    {"ARRAY_ROWS": 3, "ARRAY_COLS": 2, "K_DIM": 5, "INPUT_SKEW": 0},
 ]
 FAULTS = {
     1: ("simple", "result rows"),

@@ -33,7 +33,7 @@ gen_sim: tb.sv ${SIM_OPTS}
 	iverilog -g2012 -s tb $(PARAM_ARGS) $(COMPILE_ARGS) -o $(SIM_BUILD)/$(DUT).sim $^
 
 synth: ${SIM_OPTS}
-	yosys -p synth_xilinx ${SIM_OPTS} -L synth.log -o ${DUT}.netlist.v
+	yosys -p 'read_verilog -sv $(SIM_OPTS); synth_xilinx -top systolic_array_top; check -assert; select -assert-none t:$$dlatch t:$$adlatch' -L synth.log -o $(DUT).netlist.v
 
 netlist_sim: gen_netlist_sim
 	./${DUT}.netlist.sim +VCDFILE=netlist_sim.vcd +VCDLEVEL=0 +SEED=${SEED} | tee netlist_sim.log

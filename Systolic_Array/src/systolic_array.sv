@@ -1,28 +1,12 @@
 `timescale 1ns / 1ps
-//////////////////////////////////////////////////////////////////////////////////
-// Module Name: systolic_array
-// Description: Weight-stationary systolic array for matrix multiplication.
-//              Computes C = A × B where:
-//                - A is (ARRAY_ROWS × K) activation matrix, streamed row by row
-//                - B is (K × ARRAY_COLS) weight matrix, pre-loaded
-//                - C is (ARRAY_ROWS × ARRAY_COLS) output matrix
-//
-// Architecture:
-//   - 2D grid of Processing Elements (PEs) sized ARRAY_ROWS × ARRAY_COLS
-//   - Weights are pre-loaded into PEs and remain stationary
-//   - Activations flow left-to-right with proper skewing
-//   - Partial sums flow top-to-bottom
-//   - Results appear at bottom row after (ARRAY_ROWS + K - 1) cycles
-//
-// Dataflow:
-//   1. LOAD_WEIGHT: Load weight matrix B into PEs (column by column)
-//   2. COMPUTE: Stream activation matrix A rows with skewing
-//   3. DRAIN: Extract results from bottom row
-//
-//////////////////////////////////////////////////////////////////////////////////
+// Weight-stationary array core. Physical rows are reduction lanes of a K tile.
+// Preload B[r,c], then inject A[m,r] on lane r at enabled step m+r.
+// Activations move right; partial sums move down. Column c's dot product
+// for output row m appears after enabled step ARRAY_ROWS-1+m+c.
+// clear_acc clears both data pipelines; stored weights remain unchanged.
 
 module systolic_array #(
-    parameter ARRAY_ROWS     = 4,                   // Number of PE rows (M dimension tile)
+    parameter ARRAY_ROWS     = 4,                   // Number of reduction lanes per K tile
     parameter ARRAY_COLS     = 4,                   // Number of PE columns (N dimension tile)
     parameter DATA_WIDTH     = 8,                   // Activation data width
     parameter WEIGHT_WIDTH   = 8,                   // Weight data width
@@ -36,7 +20,7 @@ module systolic_array #(
     input  wire                                     enable,             // Global enable
     input  wire                                     clear_acc,          // Clear all accumulators
     input  wire [ARRAY_COLS-1:0]                    load_weight,        // Load weight per column
-    input  wire [$clog2(ARRAY_ROWS)-1:0]            weight_row_sel,     // Row select for weight load
+    input  wire [((ARRAY_ROWS > 1) ? $clog2(ARRAY_ROWS) : 1)-1:0] weight_row_sel,
 
     // Activation inputs (left side) - one per row
     input  wire [ARRAY_ROWS*DATA_WIDTH-1:0]         act_in,             // Packed activation inputs
