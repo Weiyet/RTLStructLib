@@ -1,6 +1,6 @@
 # Systolic Array
 
-A production-ready, parameterized systolic array implementation for matrix multiplication in SystemVerilog. This design uses weight-stationary dataflow, commonly found in AI accelerators like Google's TPU, and is suitable for FPGA and ASIC synthesis.
+A parameterized systolic array implementation for matrix multiplication in SystemVerilog, currently under development. The intended dataflow is weight-stationary. The strict testbenches currently expose arithmetic and handshake failures; see [testbench instructions and validation status](tb/README.md) before integration.
 
 ## Features
 
@@ -10,7 +10,7 @@ A production-ready, parameterized systolic array implementation for matrix multi
 - **Automatic input skewing** for proper systolic operation
 - **Signed/unsigned arithmetic** support
 - **AXI-Stream-like handshaking** for easy integration
-- **Fully synchronous design** with active-low reset
+- **Single-clock design** with active-low asynchronous reset
 - **Modular architecture** - PE, array core, and top wrapper
 
 ## Architecture

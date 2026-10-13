@@ -1,527 +1,326 @@
 `timescale 1ns / 1ps
-//////////////////////////////////////////////////////////////////////////////////
-//
-// Create Date: 2025
-// Module Name: tb
-// Description: Comprehensive testbench for systolic array matrix multiplication.
-//              Tests include:
-//              1. Basic matrix multiplication with known values
-//              2. Identity matrix multiplication
-//              3. Random matrix multiplication
-//              4. Edge cases (zeros, max values)
-//
-//////////////////////////////////////////////////////////////////////////////////
+// Drive inputs at negedge; check transfers at posedge before NBA updates.
+module tb;
+    parameter ARRAY_ROWS = 4;
+    parameter ARRAY_COLS = 4;
+    parameter K_DIM = 4;
+    parameter DATA_WIDTH = 8;
+    parameter WEIGHT_WIDTH = 8;
+    parameter ACC_WIDTH = 32;
+    parameter SIGNED_MATH = 1;
+    parameter INPUT_SKEW = 1;
+    parameter CLK_PERIOD = 10;
+    parameter TB_TIMEOUT_CYCLES = 1000;
+    parameter SIM_TIMEOUT = 1000000;
 
-module tb();
-
-    //--------------------------------------------------------------------------
-    // Parameters
-    //--------------------------------------------------------------------------
-    parameter ARRAY_ROWS    = 4;            // PE rows
-    parameter ARRAY_COLS    = 4;            // PE columns
-    parameter K_DIM         = 4;            // Inner dimension
-    parameter DATA_WIDTH    = 8;            // Activation width
-    parameter WEIGHT_WIDTH  = 8;            // Weight width
-    parameter ACC_WIDTH     = 32;           // Accumulator width
-    parameter SIGNED_MATH   = 1;            // Signed arithmetic
-    parameter INPUT_SKEW    = 1;            // Auto-skew
-
-    parameter CLK_PERIOD    = 10;           // Clock period in ns
-    parameter SIM_TIMEOUT   = 500000;       // Simulation timeout
-
-    localparam MAX_SIGNED_VAL = (1 << (DATA_WIDTH-1)) - 1;
-    localparam MIN_SIGNED_VAL = -(1 << (DATA_WIDTH-1));
-
-    //--------------------------------------------------------------------------
-    // DUT signals
-    //--------------------------------------------------------------------------
-    reg                                     clk;
-    reg                                     rst_n;
-    reg                                     start;
-    wire                                    busy;
-    wire                                    done;
-
-    reg  [ARRAY_COLS*WEIGHT_WIDTH-1:0]      weight_data;
-    reg                                     weight_valid;
-    wire                                    weight_ready;
-
-    reg  [ARRAY_ROWS*DATA_WIDTH-1:0]        act_data;
-    reg                                     act_valid;
-    wire                                    act_ready;
-
-    wire [ARRAY_COLS*ACC_WIDTH-1:0]         result_data;
-    wire                                    result_valid;
-    reg                                     result_ready;
-
-    //--------------------------------------------------------------------------
-    // Test matrices
-    //--------------------------------------------------------------------------
-    // Matrix A: ARRAY_ROWS x K_DIM (activations)
-    reg signed [DATA_WIDTH-1:0] matrix_a [ARRAY_ROWS-1:0][K_DIM-1:0];
-    // Matrix B: K_DIM x ARRAY_COLS (weights) - stored transposed for easier loading
-    reg signed [WEIGHT_WIDTH-1:0] matrix_b [K_DIM-1:0][ARRAY_COLS-1:0];
-    // Expected result: ARRAY_ROWS x ARRAY_COLS
-    reg signed [ACC_WIDTH-1:0] expected_c [ARRAY_ROWS-1:0][ARRAY_COLS-1:0];
-    // Actual result from DUT
-    reg signed [ACC_WIDTH-1:0] actual_c [ARRAY_ROWS-1:0][ARRAY_COLS-1:0];
-
-    //--------------------------------------------------------------------------
-    // Test variables
-    //--------------------------------------------------------------------------
-    integer i, j, k;
-    integer err_cnt = 0;
+    reg clk = 0;
+    reg rst_n = 0, start = 0;
+    reg weight_valid = 0, act_valid = 0, result_ready = 0;
+    reg [ARRAY_COLS*WEIGHT_WIDTH-1:0] weight_data = 0;
+    reg [ARRAY_ROWS*DATA_WIDTH-1:0] act_data = 0;
+    wire busy, done, weight_ready, act_ready, result_valid;
+    wire [ARRAY_COLS*ACC_WIDTH-1:0] result_data;
+    reg [DATA_WIDTH-1:0] matrix_a [0:ARRAY_ROWS-1][0:K_DIM-1];
+    reg [WEIGHT_WIDTH-1:0] matrix_b [0:K_DIM-1][0:ARRAY_COLS-1];
+    reg [ACC_WIDTH-1:0] expected_c [0:ARRAY_ROWS-1][0:ARRAY_COLS-1];
     integer test_num = 0;
-    integer result_row_cnt;
-    string test_name;
+    reg [255:0] selected_test = "all";
 
-    //--------------------------------------------------------------------------
-    // DUT instantiation
-    //--------------------------------------------------------------------------
     systolic_array_top #(
-        .ARRAY_ROWS     (ARRAY_ROWS),
-        .ARRAY_COLS     (ARRAY_COLS),
-        .K_DIM          (K_DIM),
-        .DATA_WIDTH     (DATA_WIDTH),
-        .WEIGHT_WIDTH   (WEIGHT_WIDTH),
-        .ACC_WIDTH      (ACC_WIDTH),
-        .SIGNED_MATH    (SIGNED_MATH),
-        .INPUT_SKEW     (INPUT_SKEW)
-    ) DUT (
-        .clk            (clk),
-        .rst_n          (rst_n),
-        .start          (start),
-        .busy           (busy),
-        .done           (done),
-        .weight_data    (weight_data),
-        .weight_valid   (weight_valid),
-        .weight_ready   (weight_ready),
-        .act_data       (act_data),
-        .act_valid      (act_valid),
-        .act_ready      (act_ready),
-        .result_data    (result_data),
-        .result_valid   (result_valid),
-        .result_ready   (result_ready)
+        .ARRAY_ROWS(ARRAY_ROWS), .ARRAY_COLS(ARRAY_COLS), .K_DIM(K_DIM),
+        .DATA_WIDTH(DATA_WIDTH), .WEIGHT_WIDTH(WEIGHT_WIDTH),
+        .ACC_WIDTH(ACC_WIDTH), .SIGNED_MATH(SIGNED_MATH), .INPUT_SKEW(INPUT_SKEW)
+    ) dut (
+        .clk(clk), .rst_n(rst_n), .start(start), .busy(busy), .done(done),
+        .weight_data(weight_data), .weight_valid(weight_valid), .weight_ready(weight_ready),
+        .act_data(act_data), .act_valid(act_valid), .act_ready(act_ready),
+        .result_data(result_data), .result_valid(result_valid), .result_ready(result_ready)
     );
 
-    //--------------------------------------------------------------------------
-    // Clock generation
-    //--------------------------------------------------------------------------
-    initial clk = 0;
-    always #(CLK_PERIOD/2) clk = ~clk;
+    always #(CLK_PERIOD/2.0) clk = ~clk;
 
-    //--------------------------------------------------------------------------
-    // Compute expected result (golden model)
-    //--------------------------------------------------------------------------
-    task compute_expected_result();
-        for (i = 0; i < ARRAY_ROWS; i = i + 1) begin
-            for (j = 0; j < ARRAY_COLS; j = j + 1) begin
-                expected_c[i][j] = 0;
-                for (k = 0; k < K_DIM; k = k + 1) begin
-                    expected_c[i][j] = expected_c[i][j] +
-                        ($signed(matrix_a[i][k]) * $signed(matrix_b[k][j]));
-                end
-            end
-        end
-    endtask
-
-    //--------------------------------------------------------------------------
-    // Load weights into DUT
-    //--------------------------------------------------------------------------
-    task load_weights();
-        integer kk, rr;
-        $display("%0t Loading weights into systolic array...", $realtime);
-
-        // Wait for weight_ready
-        while (!weight_ready) @(posedge clk);
-
-        // Load weights: iterate through K dimension, then rows
-        for (kk = 0; kk < K_DIM; kk = kk + 1) begin
-            for (rr = 0; rr < ARRAY_ROWS; rr = rr + 1) begin
-                @(posedge clk);
-                // Pack all columns for this row
-                for (j = 0; j < ARRAY_COLS; j = j + 1) begin
-                    weight_data[(j+1)*WEIGHT_WIDTH-1 -: WEIGHT_WIDTH] = matrix_b[kk][j];
-                end
-                weight_valid = 1;
-            end
-        end
-
-        @(posedge clk);
-        weight_valid = 0;
-        weight_data = 0;
-        $display("%0t Weight loading complete", $realtime);
-    endtask
-
-    //--------------------------------------------------------------------------
-    // Stream activations into DUT
-    //--------------------------------------------------------------------------
-    task stream_activations();
-        integer kk;
-        $display("%0t Streaming activations...", $realtime);
-
-        // Wait for act_ready
-        while (!act_ready) @(posedge clk);
-
-        // Stream activations column by column (K dimension)
-        for (kk = 0; kk < K_DIM; kk = kk + 1) begin
-            @(posedge clk);
-            // Pack all rows for this K column
-            for (i = 0; i < ARRAY_ROWS; i = i + 1) begin
-                act_data[(i+1)*DATA_WIDTH-1 -: DATA_WIDTH] = matrix_a[i][kk];
-            end
-            act_valid = 1;
-        end
-
-        @(posedge clk);
-        act_valid = 0;
-        act_data = 0;
-        $display("%0t Activation streaming complete", $realtime);
-    endtask
-
-    //--------------------------------------------------------------------------
-    // Collect results from DUT
-    //--------------------------------------------------------------------------
-    task collect_results();
-        integer timeout_cnt;
-        $display("%0t Collecting results...", $realtime);
-
-        result_ready = 1;
-        result_row_cnt = 0;
-        timeout_cnt = 0;
-
-        // Wait for results
-        while (!done && timeout_cnt < 1000) begin
-            @(posedge clk);
-            timeout_cnt = timeout_cnt + 1;
-
-            if (result_valid) begin
-                // Unpack result row
-                for (j = 0; j < ARRAY_COLS; j = j + 1) begin
-                    actual_c[result_row_cnt][j] = $signed(result_data[(j+1)*ACC_WIDTH-1 -: ACC_WIDTH]);
-                end
-                result_row_cnt = result_row_cnt + 1;
-                $display("%0t Received result row %0d", $realtime, result_row_cnt);
-            end
-        end
-
-        result_ready = 0;
-        $display("%0t Result collection complete", $realtime);
-    endtask
-
-    //--------------------------------------------------------------------------
-    // Compare results
-    //--------------------------------------------------------------------------
-    task compare_results();
-        integer local_err = 0;
-        $display("\n=== Result Comparison ===");
-
-        for (i = 0; i < ARRAY_ROWS; i = i + 1) begin
-            for (j = 0; j < ARRAY_COLS; j = j + 1) begin
-                if (actual_c[i][j] !== expected_c[i][j]) begin
-                    $display("ERROR: C[%0d][%0d] mismatch - Expected: %0d, Actual: %0d",
-                             i, j, expected_c[i][j], actual_c[i][j]);
-                    local_err = local_err + 1;
-                    err_cnt = err_cnt + 1;
-                end
-            end
-        end
-
-        if (local_err == 0) begin
-            $display("Test %0d (%s): PASSED", test_num, test_name);
-        end else begin
-            $display("Test %0d (%s): FAILED with %0d errors", test_num, test_name, local_err);
-        end
-    endtask
-
-    //--------------------------------------------------------------------------
-    // Print matrices
-    //--------------------------------------------------------------------------
-    task print_matrices();
-        $display("\nMatrix A (%0d x %0d):", ARRAY_ROWS, K_DIM);
-        for (i = 0; i < ARRAY_ROWS; i = i + 1) begin
-            $write("  [");
-            for (k = 0; k < K_DIM; k = k + 1) begin
-                $write("%4d ", matrix_a[i][k]);
-            end
-            $display("]");
-        end
-
-        $display("\nMatrix B (%0d x %0d):", K_DIM, ARRAY_COLS);
-        for (k = 0; k < K_DIM; k = k + 1) begin
-            $write("  [");
-            for (j = 0; j < ARRAY_COLS; j = j + 1) begin
-                $write("%4d ", matrix_b[k][j]);
-            end
-            $display("]");
-        end
-
-        $display("\nExpected C (%0d x %0d):", ARRAY_ROWS, ARRAY_COLS);
-        for (i = 0; i < ARRAY_ROWS; i = i + 1) begin
-            $write("  [");
-            for (j = 0; j < ARRAY_COLS; j = j + 1) begin
-                $write("%6d ", expected_c[i][j]);
-            end
-            $display("]");
-        end
-    endtask
-
-    //--------------------------------------------------------------------------
-    // Run single test
-    //--------------------------------------------------------------------------
-    task run_single_test();
-        compute_expected_result();
-        print_matrices();
-
-        // Start computation
-        @(posedge clk);
-        start = 1;
-        @(posedge clk);
-        start = 0;
-
-        // Wait for busy
-        while (!busy) @(posedge clk);
-
-        // Load weights and stream activations in parallel (sequentially in FSM)
-        fork
-            load_weights();
-            stream_activations();
-            collect_results();
-        join
-
-        // Wait for done
-        while (!done) @(posedge clk);
-
-        compare_results();
-
-        // Gap between tests
-        repeat(10) @(posedge clk);
-    endtask
-
-    //--------------------------------------------------------------------------
-    // Test 1: Simple known values
-    //--------------------------------------------------------------------------
-    task test_simple_values();
-        test_num = test_num + 1;
-        test_name = "Simple Known Values";
-        $display("\n========================================");
-        $display("Test %0d: %s", test_num, test_name);
-        $display("========================================");
-
-        // Initialize A with simple values [1,2,3,4; 5,6,7,8; ...]
-        for (i = 0; i < ARRAY_ROWS; i = i + 1) begin
-            for (k = 0; k < K_DIM; k = k + 1) begin
-                matrix_a[i][k] = i * K_DIM + k + 1;
-            end
-        end
-
-        // Initialize B with simple values [1,2,3,4; 5,6,7,8; ...]
-        for (k = 0; k < K_DIM; k = k + 1) begin
-            for (j = 0; j < ARRAY_COLS; j = j + 1) begin
-                matrix_b[k][j] = k * ARRAY_COLS + j + 1;
-            end
-        end
-
-        run_single_test();
-    endtask
-
-    //--------------------------------------------------------------------------
-    // Test 2: Identity matrix multiplication
-    //--------------------------------------------------------------------------
-    task test_identity_matrix();
-        test_num = test_num + 1;
-        test_name = "Identity Matrix";
-        $display("\n========================================");
-        $display("Test %0d: %s", test_num, test_name);
-        $display("========================================");
-
-        // A = random values
-        for (i = 0; i < ARRAY_ROWS; i = i + 1) begin
-            for (k = 0; k < K_DIM; k = k + 1) begin
-                matrix_a[i][k] = $urandom_range(1, 10);
-            end
-        end
-
-        // B = identity (assuming square matrix)
-        for (k = 0; k < K_DIM; k = k + 1) begin
-            for (j = 0; j < ARRAY_COLS; j = j + 1) begin
-                matrix_b[k][j] = (k == j) ? 1 : 0;
-            end
-        end
-
-        run_single_test();
-    endtask
-
-    //--------------------------------------------------------------------------
-    // Test 3: Random matrix multiplication
-    //--------------------------------------------------------------------------
-    task test_random_matrices();
-        test_num = test_num + 1;
-        test_name = "Random Matrices";
-        $display("\n========================================");
-        $display("Test %0d: %s", test_num, test_name);
-        $display("========================================");
-
-        // Random A
-        for (i = 0; i < ARRAY_ROWS; i = i + 1) begin
-            for (k = 0; k < K_DIM; k = k + 1) begin
-                if (SIGNED_MATH)
-                    matrix_a[i][k] = $random % (MAX_SIGNED_VAL + 1);
-                else
-                    matrix_a[i][k] = $urandom_range(0, (1 << DATA_WIDTH) - 1);
-            end
-        end
-
-        // Random B
-        for (k = 0; k < K_DIM; k = k + 1) begin
-            for (j = 0; j < ARRAY_COLS; j = j + 1) begin
-                if (SIGNED_MATH)
-                    matrix_b[k][j] = $random % (MAX_SIGNED_VAL + 1);
-                else
-                    matrix_b[k][j] = $urandom_range(0, (1 << WEIGHT_WIDTH) - 1);
-            end
-        end
-
-        run_single_test();
-    endtask
-
-    //--------------------------------------------------------------------------
-    // Test 4: Zero matrix
-    //--------------------------------------------------------------------------
-    task test_zero_matrix();
-        test_num = test_num + 1;
-        test_name = "Zero Matrix";
-        $display("\n========================================");
-        $display("Test %0d: %s", test_num, test_name);
-        $display("========================================");
-
-        // A = all zeros
-        for (i = 0; i < ARRAY_ROWS; i = i + 1) begin
-            for (k = 0; k < K_DIM; k = k + 1) begin
-                matrix_a[i][k] = 0;
-            end
-        end
-
-        // B = random
-        for (k = 0; k < K_DIM; k = k + 1) begin
-            for (j = 0; j < ARRAY_COLS; j = j + 1) begin
-                matrix_b[k][j] = $urandom_range(1, 10);
-            end
-        end
-
-        run_single_test();
-    endtask
-
-    //--------------------------------------------------------------------------
-    // Test 5: Negative values (signed)
-    //--------------------------------------------------------------------------
-    task test_signed_values();
-        test_num = test_num + 1;
-        test_name = "Signed Values";
-        $display("\n========================================");
-        $display("Test %0d: %s", test_num, test_name);
-        $display("========================================");
-
-        // A with positive and negative values
-        for (i = 0; i < ARRAY_ROWS; i = i + 1) begin
-            for (k = 0; k < K_DIM; k = k + 1) begin
-                matrix_a[i][k] = ((i + k) % 2 == 0) ? (k + 1) : -(k + 1);
-            end
-        end
-
-        // B with positive and negative values
-        for (k = 0; k < K_DIM; k = k + 1) begin
-            for (j = 0; j < ARRAY_COLS; j = j + 1) begin
-                matrix_b[k][j] = ((k + j) % 2 == 0) ? (j + 1) : -(j + 1);
-            end
-        end
-
-        run_single_test();
-    endtask
-
-    //--------------------------------------------------------------------------
-    // Main test sequence
-    //--------------------------------------------------------------------------
-    initial begin
-        string vcdfile;
-        int vcdlevel;
-        int seed;
-
-        // Initialize signals
+    task automatic reset_dut;
+        @(negedge clk);
         rst_n = 0;
         start = 0;
-        weight_data = 0;
         weight_valid = 0;
-        act_data = 0;
         act_valid = 0;
         result_ready = 0;
-
-        // VCD dump setup
-        if ($value$plusargs("VCDFILE=%s", vcdfile))
-            $dumpfile(vcdfile);
-        if ($value$plusargs("VCDLEVEL=%d", vcdlevel))
-            $dumpvars(vcdlevel, tb);
-        if ($value$plusargs("SEED=%d", seed)) begin
-            $urandom(seed);
-            $display("Seed = %d", seed);
-        end
-
-        $display("\n");
-        $display("============================================");
-        $display("   Systolic Array Testbench");
-        $display("============================================");
-        $display("Array Size:    %0d x %0d", ARRAY_ROWS, ARRAY_COLS);
-        $display("K Dimension:   %0d", K_DIM);
-        $display("Data Width:    %0d bits", DATA_WIDTH);
-        $display("Weight Width:  %0d bits", WEIGHT_WIDTH);
-        $display("Acc Width:     %0d bits", ACC_WIDTH);
-        $display("Signed Math:   %s", SIGNED_MATH ? "Yes" : "No");
-        $display("============================================\n");
-
-        // Reset sequence
-        repeat(5) @(posedge clk);
+        weight_data = 0;
+        act_data = 0;
+        repeat (3) @(posedge clk);
+        @(negedge clk);
+        if ({busy, done, result_valid, weight_ready, act_ready} !== 5'b0)
+            $fatal(1, "Control output active during reset");
         rst_n = 1;
-        repeat(5) @(posedge clk);
-
-        // Run tests
-        test_simple_values();
-        test_identity_matrix();
-        test_random_matrices();
-        test_zero_matrix();
-
-        if (SIGNED_MATH) begin
-            test_signed_values();
+        repeat (2) begin
+            @(negedge clk);
+            if ({busy, done, result_valid} !== 3'b0)
+                $fatal(1, "Stale control/result after reset");
         end
+    endtask
 
-        // Multiple random tests
-        repeat(3) begin
-            test_random_matrices();
+    task automatic begin_job;
+        if (busy !== 1'b0) $fatal(1, "DUT busy before start");
+        @(negedge clk);
+        start = 1;
+        @(negedge clk);
+        start = 0;
+    endtask
+
+    task automatic fill_matrices(input [255:0] kind);
+        integer r, c, k, bit_idx;
+        for (r = 0; r < ARRAY_ROWS; r = r + 1) begin
+            for (k = 0; k < K_DIM; k = k + 1) begin
+                for (bit_idx = 0; bit_idx < DATA_WIDTH; bit_idx = bit_idx + 1)
+                    matrix_a[r][k][bit_idx] = $urandom_range(0, 1);
+                case (kind)
+                    "simple": matrix_a[r][k] = r*K_DIM + k + 1;
+                    "zero": matrix_a[r][k] = 0;
+                    "signed": matrix_a[r][k] = ((r+k)%2) ? -(k+1) : k+1;
+                    "limits": begin
+                        case ((r+k)%4)
+                            0: matrix_a[r][k] = SIGNED_MATH ? {1'b1, {(DATA_WIDTH-1){1'b0}}} : {DATA_WIDTH{1'b1}};
+                            1: matrix_a[r][k] = SIGNED_MATH ? {1'b0, {(DATA_WIDTH-1){1'b1}}} : 1;
+                            2: matrix_a[r][k] = SIGNED_MATH ? {DATA_WIDTH{1'b1}} : 0;
+                            3: matrix_a[r][k] = SIGNED_MATH ? 0 : {DATA_WIDTH{1'b1}} - 1'b1;
+                        endcase
+                    end
+                endcase
+            end
         end
+        for (k = 0; k < K_DIM; k = k + 1) begin
+            for (c = 0; c < ARRAY_COLS; c = c + 1) begin
+                for (bit_idx = 0; bit_idx < WEIGHT_WIDTH; bit_idx = bit_idx + 1)
+                    matrix_b[k][c][bit_idx] = $urandom_range(0, 1);
+                case (kind)
+                    "simple": matrix_b[k][c] = k*ARRAY_COLS + c + 1;
+                    "identity": matrix_b[k][c] = (k == c);
+                    "signed": matrix_b[k][c] = ((k+c)%2) ? -(c+1) : c+1;
+                    "limits": begin
+                        case ((k+c)%4)
+                            0: matrix_b[k][c] = SIGNED_MATH ? {1'b1, {(WEIGHT_WIDTH-1){1'b0}}} : {WEIGHT_WIDTH{1'b1}};
+                            1: matrix_b[k][c] = SIGNED_MATH ? {1'b0, {(WEIGHT_WIDTH-1){1'b1}}} : 1;
+                            2: matrix_b[k][c] = SIGNED_MATH ? {WEIGHT_WIDTH{1'b1}} : 0;
+                            3: matrix_b[k][c] = SIGNED_MATH ? 0 : {WEIGHT_WIDTH{1'b1}} - 1'b1;
+                        endcase
+                    end
+                endcase
+            end
+        end
+    endtask
 
-        // Summary
-        $display("\n============================================");
-        $display("   Test Summary");
-        $display("============================================");
-        $display("Total Tests: %0d", test_num);
-        if (err_cnt == 0) begin
-            $display("Result: ALL TESTS PASSED");
+    task automatic compute_expected;
+        integer r, c, k;
+        reg [ACC_WIDTH-1:0] total;
+        reg signed [DATA_WIDTH+WEIGHT_WIDTH-1:0] product;
+        for (r = 0; r < ARRAY_ROWS; r = r + 1) begin
+            for (c = 0; c < ARRAY_COLS; c = c + 1) begin
+                total = 0;
+                for (k = 0; k < K_DIM; k = k + 1) begin
+                    if (SIGNED_MATH) begin
+                        product = $signed(matrix_a[r][k]) * $signed(matrix_b[k][c]);
+                        total = total + {{(ACC_WIDTH-DATA_WIDTH-WEIGHT_WIDTH){product[DATA_WIDTH+WEIGHT_WIDTH-1]}}, product};
+                    end else
+                        total = total + $unsigned(matrix_a[r][k]) * $unsigned(matrix_b[k][c]);
+                end
+                expected_c[r][c] = total;
+            end
+        end
+    endtask
+
+    task automatic send_weight(input integer k, input bit gaps);
+        integer cycles, c, gap_count;
+        bit accepted;
+        if (gaps) begin
+            gap_count = $urandom_range(1, 3);
+            repeat (gap_count) begin
+                @(negedge clk);
+                weight_valid = 0;
+                weight_data = '1; // Invalid data must be ignored.
+                @(posedge clk);
+            end
+        end
+        @(negedge clk);
+        for (c = 0; c < ARRAY_COLS; c = c + 1)
+            weight_data[c*WEIGHT_WIDTH +: WEIGHT_WIDTH] = matrix_b[k][c];
+        weight_valid = 1;
+        accepted = 0;
+        for (cycles = 0; cycles < TB_TIMEOUT_CYCLES && !accepted; cycles = cycles + 1) begin
+            @(posedge clk);
+            accepted = (weight_ready === 1'b1);
+        end
+        if (!accepted) $fatal(1, "Timed out waiting for weight_ready");
+    endtask
+
+    task automatic load_weights(input bit gaps);
+        integer k, r;
+        // Existing top-level loading contract: repeat each B row ARRAY_ROWS times.
+        for (k = 0; k < K_DIM; k = k + 1)
+            for (r = 0; r < ARRAY_ROWS; r = r + 1)
+                send_weight(k, gaps);
+        @(negedge clk);
+        weight_valid = 0;
+        weight_data = 0;
+    endtask
+
+    task automatic send_activation(input integer k, input bit gaps);
+        integer cycles, r, gap_count;
+        bit accepted;
+        if (gaps) begin
+            gap_count = $urandom_range(1, 3);
+            repeat (gap_count) begin
+                @(negedge clk);
+                act_valid = 0;
+                act_data = '1;
+                @(posedge clk);
+            end
+        end
+        @(negedge clk);
+        for (r = 0; r < ARRAY_ROWS; r = r + 1)
+            act_data[r*DATA_WIDTH +: DATA_WIDTH] = matrix_a[r][k];
+        act_valid = 1;
+        accepted = 0;
+        for (cycles = 0; cycles < TB_TIMEOUT_CYCLES && !accepted; cycles = cycles + 1) begin
+            @(posedge clk);
+            accepted = (act_ready === 1'b1);
+        end
+        if (!accepted) $fatal(1, "Timed out waiting for act_ready");
+    endtask
+
+    task automatic stream_activations(input bit gaps);
+        integer k;
+        for (k = 0; k < K_DIM; k = k + 1) send_activation(k, gaps);
+        @(negedge clk);
+        act_valid = 0;
+        act_data = 0;
+    endtask
+
+    task automatic collect_results(input bit backpressure);
+        integer cycle, count, c, initial_stall;
+        bit held_valid, first_seen, completed;
+        reg [ARRAY_COLS*ACC_WIDTH-1:0] held_data;
+        count = 0;
+        initial_stall = 0;
+        held_valid = 0;
+        first_seen = 0;
+        completed = 0;
+        for (cycle = 0; cycle < TB_TIMEOUT_CYCLES && !completed; cycle = cycle + 1) begin
+            @(negedge clk);
+            if (backpressure && (!first_seen || initial_stall < 3)) begin
+                result_ready = 0;
+                if (first_seen) initial_stall = initial_stall + 1;
+            end else begin
+                result_ready = !backpressure || ((cycle % 5) > 1);
+            end
+            @(posedge clk);
+            if (result_valid !== 1'b0 && result_valid !== 1'b1)
+                $fatal(1, "Unknown result_valid");
+            if (held_valid && (result_valid !== 1'b1 || result_data !== held_data))
+                $fatal(1, "Stalled result changed or valid dropped");
+            held_valid = result_valid && !result_ready;
+            held_data = result_data;
+            first_seen = first_seen || result_valid;
+            if (result_valid && result_ready) begin
+                if (count >= ARRAY_ROWS) $fatal(1, "Extra result row");
+                for (c = 0; c < ARRAY_COLS; c = c + 1) begin
+                    if (result_data[c*ACC_WIDTH +: ACC_WIDTH] !== expected_c[count][c])
+                        $fatal(1, "C[%0d][%0d] mismatch: expected 0x%0h, got 0x%0h",
+                               count, c, expected_c[count][c], result_data[c*ACC_WIDTH +: ACC_WIDTH]);
+                end
+                count = count + 1;
+            end
+            if (done === 1'b1) begin
+                if (count != ARRAY_ROWS)
+                    $fatal(1, "Expected %0d result rows, received %0d", ARRAY_ROWS, count);
+                if (held_valid) $fatal(1, "done asserted with an unaccepted result");
+                if (busy !== 1'b0) $fatal(1, "busy active at done");
+                completed = 1;
+            end
+        end
+        if (!completed) $fatal(1, "Timed out waiting for done");
+        repeat (2) begin
+            @(posedge clk);
+            if (done !== 1'b0) $fatal(1, "done is not a one-cycle pulse");
+            if (result_valid !== 1'b0) $fatal(1, "Extra result after done");
+        end
+        @(negedge clk);
+        result_ready = 0;
+    endtask
+
+    task automatic run_case(input [255:0] kind, input bit gaps, input bit backpressure);
+        fill_matrices(kind);
+        compute_expected();
+        test_num = test_num + 1;
+        $display("Test %0d: %s, gaps=%0d, backpressure=%0d", test_num, kind, gaps, backpressure);
+        fork
+            begin
+                begin_job();
+                load_weights(gaps);
+                stream_activations(gaps);
+            end
+            collect_results(backpressure);
+        join
+        $display("Test %0d: PASSED", test_num);
+    endtask
+
+    task automatic reset_recovery(input bit during_compute);
+        fill_matrices("random");
+        begin_job();
+        if (during_compute) begin
+            load_weights(0);
+            send_activation(0, 0);
         end else begin
-            $display("Result: FAILED");
-            $display("Total Errors: %0d", err_cnt);
+            send_weight(0, 0);
         end
-        $display("============================================\n");
+        reset_dut();
+        run_case("simple", 0, 0);
+    endtask
 
-        #100;
+    initial begin
+        integer seed, seed_dummy;
+        reg [1023:0] vcdfile;
+        if (ARRAY_ROWS < 1 || ARRAY_COLS < 1 || K_DIM < 1 ||
+            DATA_WIDTH < 1 || WEIGHT_WIDTH < 1 || ACC_WIDTH < DATA_WIDTH + WEIGHT_WIDTH ||
+            TB_TIMEOUT_CYCLES < 1 || INPUT_SKEW != 1)
+            $fatal(1, "Invalid bench parameters; automatic input skewing is required");
+        seed = 1;
+        seed_dummy = $value$plusargs("SEED=%d", seed);
+        $display("TB seed=%0d", seed);
+        seed_dummy = $urandom(seed);
+        seed_dummy = $value$plusargs("TEST=%s", selected_test);
+        if ($value$plusargs("VCDFILE=%s", vcdfile)) begin
+            $dumpfile(vcdfile);
+            $dumpvars(0, tb);
+        end
+        $display("M=%0d N=%0d K=%0d signed=%0d; TEST=%s", ARRAY_ROWS, ARRAY_COLS, K_DIM, SIGNED_MATH, selected_test);
+        reset_dut();
+        if (selected_test == "all" || selected_test == "simple") run_case("simple", 0, 0);
+        if (selected_test == "all" || selected_test == "identity") run_case("identity", 0, 0);
+        if (selected_test == "all" || selected_test == "random") repeat (5) run_case("random", 0, 0);
+        if (selected_test == "all" || selected_test == "zero") run_case("zero", 0, 0);
+        if (selected_test == "all" || selected_test == "signed") begin
+            if (SIGNED_MATH) run_case("signed", 0, 0);
+            else if (selected_test == "signed") $fatal(1, "signed test requires SIGNED_MATH=1");
+        end
+        if (selected_test == "all" || selected_test == "limits") run_case("limits", 0, 0);
+        if (selected_test == "all" || selected_test == "input_gaps") run_case("random", 1, 0);
+        if (selected_test == "all" || selected_test == "output_backpressure") run_case("random", 0, 1);
+        if (selected_test == "all" || selected_test == "stalls") run_case("random", 1, 1);
+        if (selected_test == "all" || selected_test == "back_to_back") begin
+            run_case("simple", 0, 0);
+            run_case("zero", 0, 0);
+            run_case("random", 0, 0);
+        end
+        if (selected_test == "all" || selected_test == "reset_weights") reset_recovery(0);
+        if (selected_test == "all" || selected_test == "reset_compute") reset_recovery(1);
+        if (test_num == 0) $fatal(1, "Unknown or empty TEST=%s", selected_test);
+        $display("ALL TESTS PASSED (%0d transactions)", test_num);
         $finish;
     end
 
-    //--------------------------------------------------------------------------
-    // Timeout watchdog
-    //--------------------------------------------------------------------------
     initial begin
         #(SIM_TIMEOUT);
-        $display("\n%0t ERROR: Simulation timeout!", $realtime);
-        $display("TEST FAILED - SIM TIMEOUT\n");
-        $finish;
+        $fatal(1, "Global simulation timeout");
     end
-
 endmodule

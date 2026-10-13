@@ -1,46 +1,36 @@
+.DEFAULT_GOAL := check
 SIM ?= icarus
 TOPLEVEL_LANG ?= verilog
-WAVES ?= 1 #set 1 to enable waveform dump.
+WAVES ?= 0
+SEED ?= 1
+TB_TIMEOUT_CYCLES ?= 1000
 
-PWD=$(shell pwd)
+ARRAY_ROWS ?= 4
+ARRAY_COLS ?= 4
+K_DIM ?= 4
+DATA_WIDTH ?= 8
+WEIGHT_WIDTH ?= 8
+ACC_WIDTH ?= 32
+SIGNED_MATH ?= 1
+INPUT_SKEW ?= 1
+PARAMETERS = ARRAY_ROWS ARRAY_COLS K_DIM DATA_WIDTH WEIGHT_WIDTH ACC_WIDTH SIGNED_MATH INPUT_SKEW
 
-VERILOG_SOURCES = $(PWD)/../../src/pe.sv
-VERILOG_SOURCES += $(PWD)/../../src/systolic_array.sv
-VERILOG_SOURCES += $(PWD)/../../src/systolic_array_top.sv
-
-TOPLEVEL = systolic_array_top  # DUT Top
-MODULE   = tb  # top python file
-
-# Use , separator to run multiple TESTCASE, by default all @cocotb.test will be run
-#TESTCASE = test_simple_values,test_identity_matrix,test_random_matrices
-#TESTCASE = test_simple_values
-
-# DUT parameters - use "-p" iverilog command flags
-COMPILE_ARGS = -Psystolic_array_top.ARRAY_ROWS=4
-COMPILE_ARGS += -Psystolic_array_top.ARRAY_COLS=4
-COMPILE_ARGS += -Psystolic_array_top.K_DIM=4
-COMPILE_ARGS += -Psystolic_array_top.DATA_WIDTH=8
-COMPILE_ARGS += -Psystolic_array_top.WEIGHT_WIDTH=8
-COMPILE_ARGS += -Psystolic_array_top.ACC_WIDTH=32
-COMPILE_ARGS += -Psystolic_array_top.SIGNED_MATH=1
-COMPILE_ARGS += -Psystolic_array_top.INPUT_SKEW=1
-# Run make clean before running with new parameters.
-
-# Set RANDOM_SEED number
-#PLUSARGS = +seed=1
-
+RTL_SOURCES ?= $(abspath ../../src/pe.sv) $(abspath ../../src/systolic_array.sv) $(abspath ../../src/systolic_array_top.sv)
+VERILOG_SOURCES = $(RTL_SOURCES)
+TOPLEVEL = systolic_array_top
+MODULE = tb
+COCOTB_TEST_MODULES = $(MODULE)
+COMPILE_ARGS += $(foreach param,$(PARAMETERS),-P$(TOPLEVEL).$(param)=$($(param))) $(TB_COMPILE_ARGS)
+export TB_SEED = $(SEED)
+export TB_TIMEOUT_CYCLES
+export RANDOM_SEED = $(SEED)
+export COCOTB_RANDOM_SEED = $(SEED)
 COCOTB_HDL_TIMEUNIT = 1ns
 COCOTB_HDL_TIMEPRECISION = 1ps
-
-ifeq ($(SIM), icarus)
-   $(shell echo 'module iverilog_dump();' > iverilog_dump.v)
-   $(shell echo 'initial begin' >> iverilog_dump.v)
-   $(shell echo '    $$dumpfile("$(TOPLEVEL).vcd");' >> iverilog_dump.v)
-   $(shell echo '    $$dumpvars(0, $(TOPLEVEL));' >> iverilog_dump.v)
-   $(shell echo 'end' >> iverilog_dump.v)
-   $(shell echo 'endmodule' >> iverilog_dump.v)
-   VERILOG_SOURCES += $(PWD)/iverilog_dump.v
-   COMPILE_ARGS += -s iverilog_dump
-endif
+SIM_BUILD ?= sim_build
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
+
+.PHONY: check
+check: sim
+	python3 ../support/check_results.py $(COCOTB_RESULTS_FILE)

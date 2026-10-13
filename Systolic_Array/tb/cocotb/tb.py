@@ -1,378 +1,297 @@
-"""
-Cocotb testbench for Systolic Array matrix multiplication.
+"""Check matrix transactions, including stalls and reset recovery."""
 
-Tests:
-1. Simple matrix multiplication with known values
-2. Identity matrix multiplication
-3. Random matrix multiplication
-4. Edge cases (zeros, signed values)
-"""
-
+import os
 import random
+
 import cocotb
-from cocotb.triggers import Timer, RisingEdge, FallingEdge
 from cocotb.clock import Clock
-
-# Default parameters (overridden by DUT parameters)
-ARRAY_ROWS = 4
-ARRAY_COLS = 4
-K_DIM = 4
-DATA_WIDTH = 8
-WEIGHT_WIDTH = 8
-ACC_WIDTH = 32
-SIGNED_MATH = 1
-
-CLK_PERIOD = 10  # ns
-err_cnt = 0
+from cocotb.triggers import FallingEdge, RisingEdge
 
 
-def signed_value(val, width):
-    """Convert unsigned to signed value."""
-    if val >= (1 << (width - 1)):
-        return val - (1 << width)
-    return val
+class MatrixBench:
+    def __init__(self, dut):
+        self.dut = dut
+        for name in ("ARRAY_ROWS", "ARRAY_COLS", "K_DIM", "DATA_WIDTH",
+                     "WEIGHT_WIDTH", "ACC_WIDTH", "SIGNED_MATH", "INPUT_SKEW"):
+            setattr(self, name.lower(), int(getattr(dut, name).value))
+        assert min(self.array_rows, self.array_cols, self.k_dim,
+                   self.data_width, self.weight_width) > 0
+        assert self.acc_width >= self.data_width + self.weight_width
+        assert self.input_skew == 1, "This suite requires automatic input skewing"
+        self.seed = int(os.getenv("TB_SEED", "1"))
+        self.rng = random.Random(self.seed)
+        self.timeout = int(os.getenv("TB_TIMEOUT_CYCLES", "1000"))
+        assert self.timeout > 0
+        dut._log.info("TB seed=%d, M=%d, N=%d, K=%d, signed=%d",
+                      self.seed, self.array_rows, self.array_cols,
+                      self.k_dim, self.signed_math)
 
+    @staticmethod
+    def pack(values, width):
+        mask = (1 << width) - 1
+        return sum((value & mask) << (lane * width)
+                   for lane, value in enumerate(values))
 
-def to_unsigned(val, width):
-    """Convert signed to unsigned value."""
-    if val < 0:
-        return val + (1 << width)
-    return val
+    def decode(self, value, width):
+        value &= (1 << width) - 1
+        if self.signed_math and value & (1 << (width - 1)):
+            value -= 1 << width
+        return value
 
+    def expected(self, matrix_a, matrix_b):
+        """Use integer arithmetic, then wrap to ACC_WIDTH bits."""
+        return [[self.decode(sum(
+            self.decode(matrix_a[row][k], self.data_width)
+            * self.decode(matrix_b[k][col], self.weight_width)
+            for k in range(self.k_dim)), self.acc_width)
+            for col in range(self.array_cols)] for row in range(self.array_rows)]
 
-async def dut_init(dut):
-    """Initialize DUT and start clock."""
-    global ARRAY_ROWS, ARRAY_COLS, K_DIM, DATA_WIDTH, WEIGHT_WIDTH, ACC_WIDTH, SIGNED_MATH
+    def matrices(self, kind="random"):
+        a = [[self.rng.getrandbits(self.data_width) for _ in range(self.k_dim)]
+             for _ in range(self.array_rows)]
+        b = [[self.rng.getrandbits(self.weight_width) for _ in range(self.array_cols)]
+             for _ in range(self.k_dim)]
+        if kind == "simple":
+            a = [[row * self.k_dim + k + 1 for k in range(self.k_dim)]
+                 for row in range(self.array_rows)]
+            b = [[k * self.array_cols + col + 1 for col in range(self.array_cols)]
+                 for k in range(self.k_dim)]
+        elif kind == "identity":
+            b = [[int(k == col) for col in range(self.array_cols)]
+                 for k in range(self.k_dim)]
+        elif kind == "zero":
+            a = [[0] * self.k_dim for _ in range(self.array_rows)]
+        elif kind == "signed":
+            a = [[(-1 if (row + k) % 2 else 1) * (k + 1)
+                  for k in range(self.k_dim)] for row in range(self.array_rows)]
+            b = [[(-1 if (k + col) % 2 else 1) * (col + 1)
+                  for col in range(self.array_cols)] for k in range(self.k_dim)]
+        elif kind == "limits":
+            def limits(width):
+                if self.signed_math:
+                    return [-(1 << (width - 1)), (1 << (width - 1)) - 1, -1, 0]
+                return [(1 << width) - 1, 1, 0, (1 << width) - 2]
+            av, bv = limits(self.data_width), limits(self.weight_width)
+            a = [[av[(row + k) % 4] for k in range(self.k_dim)]
+                 for row in range(self.array_rows)]
+            b = [[bv[(k + col) % 4] for col in range(self.array_cols)]
+                 for k in range(self.k_dim)]
+        return a, b
 
-    # Read parameters from DUT
-    ARRAY_ROWS = dut.ARRAY_ROWS.value
-    ARRAY_COLS = dut.ARRAY_COLS.value
-    K_DIM = dut.K_DIM.value
-    DATA_WIDTH = dut.DATA_WIDTH.value
-    WEIGHT_WIDTH = dut.WEIGHT_WIDTH.value
-    ACC_WIDTH = dut.ACC_WIDTH.value
-    SIGNED_MATH = dut.SIGNED_MATH.value
-
-    dut._log.info(f"Array Size: {ARRAY_ROWS}x{ARRAY_COLS}, K={K_DIM}")
-    dut._log.info(f"Data Width: {DATA_WIDTH}, Weight Width: {WEIGHT_WIDTH}, Acc Width: {ACC_WIDTH}")
-    dut._log.info(f"Signed Math: {SIGNED_MATH}")
-
-    # Start clock
-    await cocotb.start(Clock(dut.clk, CLK_PERIOD, units="ns").start())
-
-    # Initialize signals
-    dut.rst_n.value = 0
-    dut.start.value = 0
-    dut.weight_data.value = 0
-    dut.weight_valid.value = 0
-    dut.act_data.value = 0
-    dut.act_valid.value = 0
-    dut.result_ready.value = 0
-
-    # Reset sequence
-    await Timer(100, 'ns')
-    dut.rst_n.value = 1
-    await Timer(100, 'ns')
-
-
-def compute_expected_result(matrix_a, matrix_b):
-    """Compute expected matrix multiplication result."""
-    result = [[0] * ARRAY_COLS for _ in range(ARRAY_ROWS)]
-
-    for i in range(ARRAY_ROWS):
-        for j in range(ARRAY_COLS):
-            acc = 0
-            for k in range(K_DIM):
-                if SIGNED_MATH:
-                    a_val = signed_value(matrix_a[i][k], DATA_WIDTH)
-                    b_val = signed_value(matrix_b[k][j], WEIGHT_WIDTH)
-                else:
-                    a_val = matrix_a[i][k]
-                    b_val = matrix_b[k][j]
-                acc += a_val * b_val
-            result[i][j] = acc
-
-    return result
-
-
-async def load_weights(dut, matrix_b):
-    """Load weight matrix into systolic array."""
-    dut._log.info("Loading weights...")
-
-    # Wait for weight_ready
-    while dut.weight_ready.value != 1:
-        await RisingEdge(dut.clk)
-
-    # Load weights: K dimension outer, rows inner
-    for k in range(K_DIM):
-        for row in range(ARRAY_ROWS):
+    async def reset(self):
+        dut = self.dut
+        await FallingEdge(dut.clk)
+        dut.rst_n.value = 0
+        for name in ("start", "weight_valid", "act_valid", "result_ready",
+                     "weight_data", "act_data"):
+            getattr(dut, name).value = 0
+        for _ in range(3):
             await RisingEdge(dut.clk)
+        await FallingEdge(dut.clk)
+        for name in ("busy", "done", "result_valid", "weight_ready", "act_ready"):
+            assert int(getattr(dut, name).value) == 0, f"{name} active during reset"
+        dut.rst_n.value = 1
+        for _ in range(2):
+            await FallingEdge(dut.clk)
+            assert int(dut.busy.value) == 0 and int(dut.done.value) == 0
+            assert int(dut.result_valid.value) == 0, "Stale result after reset"
 
-            # Pack all columns
-            weight_packed = 0
-            for col in range(ARRAY_COLS):
-                weight_packed |= (matrix_b[k][col] & ((1 << WEIGHT_WIDTH) - 1)) << (col * WEIGHT_WIDTH)
+    async def start(self):
+        dut = self.dut
+        assert int(dut.busy.value) == 0, "DUT busy before start"
+        await FallingEdge(dut.clk)
+        dut.start.value = 1
+        await FallingEdge(dut.clk)
+        dut.start.value = 0
 
-            dut.weight_data.value = weight_packed
-            dut.weight_valid.value = 1
+    async def send(self, port, value, gaps=False):
+        """Drive on falling edges; sample acceptance before rising-edge updates."""
+        dut = self.dut
+        valid = getattr(dut, f"{port}_valid")
+        data = getattr(dut, f"{port}_data")
+        ready = getattr(dut, f"{port}_ready")
+        if gaps:
+            for _ in range(self.rng.randrange(1, 4)):
+                await FallingEdge(dut.clk)
+                valid.value = 0
+                data.value = self.rng.getrandbits(len(data))
+                await RisingEdge(dut.clk)
+        await FallingEdge(dut.clk)
+        valid.value = 1
+        data.value = value
+        for _ in range(self.timeout):
+            await RisingEdge(dut.clk)
+            if int(ready.value):
+                return
+        raise AssertionError(f"Timed out waiting for {port}_ready")
 
-    await RisingEdge(dut.clk)
-    dut.weight_valid.value = 0
-    dut.weight_data.value = 0
-    dut._log.info("Weight loading complete")
+    async def finish_port(self, port):
+        await FallingEdge(self.dut.clk)
+        getattr(self.dut, f"{port}_valid").value = 0
+        getattr(self.dut, f"{port}_data").value = 0
 
+    async def load_weights(self, matrix_b, gaps=False):
+        # Preserve the existing top's K * ARRAY_ROWS loading schedule.
+        for row in matrix_b:
+            for _ in range(self.array_rows):
+                await self.send("weight", self.pack(row, self.weight_width), gaps)
+        await self.finish_port("weight")
 
-async def stream_activations(dut, matrix_a):
-    """Stream activation matrix into systolic array."""
-    dut._log.info("Streaming activations...")
+    async def stream_activations(self, matrix_a, gaps=False):
+        for k in range(self.k_dim):
+            await self.send("act", self.pack(
+                [row[k] for row in matrix_a], self.data_width), gaps)
+        await self.finish_port("act")
 
-    # Wait for act_ready
-    while dut.act_ready.value != 1:
-        await RisingEdge(dut.clk)
+    async def collect(self, expected, backpressure=False):
+        dut = self.dut
+        count = 0
+        held = None
+        first_seen = False
+        initial_stall = 0
+        for cycle in range(self.timeout):
+            await FallingEdge(dut.clk)
+            if backpressure and (not first_seen or initial_stall < 3):
+                ready = 0
+                if first_seen:
+                    initial_stall += 1
+            else:
+                ready = int(not backpressure or cycle % 5 not in (0, 1))
+            dut.result_ready.value = ready
+            await RisingEdge(dut.clk)
+            valid = int(dut.result_valid.value)
+            data = int(dut.result_data.value) if valid else None
+            if held is not None:
+                assert valid and data == held, "Stalled result changed or valid dropped"
+            held = data if valid and not ready else None
+            first_seen |= bool(valid)
+            if valid and ready:
+                assert count < self.array_rows, "Extra result row"
+                actual = [self.decode(data >> (col * self.acc_width), self.acc_width)
+                          for col in range(self.array_cols)]
+                assert actual == expected[count], (
+                    f"C[{count}] mismatch: expected {expected[count]}, got {actual}")
+                count += 1
+            if int(dut.done.value):
+                assert count == self.array_rows, (
+                    f"Expected {self.array_rows} result rows, received {count}")
+                assert held is None, "done asserted with an unaccepted result"
+                assert int(dut.busy.value) == 0, "busy active at done"
+                for _ in range(2):
+                    await RisingEdge(dut.clk)
+                    assert int(dut.done.value) == 0, "done is not a one-cycle pulse"
+                    assert int(dut.result_valid.value) == 0, "Extra result after done"
+                await FallingEdge(dut.clk)
+                dut.result_ready.value = 0
+                return
+        raise AssertionError("Timed out waiting for done")
 
-    # Stream column by column (K dimension)
-    for k in range(K_DIM):
-        await RisingEdge(dut.clk)
-
-        # Pack all rows
-        act_packed = 0
-        for row in range(ARRAY_ROWS):
-            act_packed |= (matrix_a[row][k] & ((1 << DATA_WIDTH) - 1)) << (row * DATA_WIDTH)
-
-        dut.act_data.value = act_packed
-        dut.act_valid.value = 1
-
-    await RisingEdge(dut.clk)
-    dut.act_valid.value = 0
-    dut.act_data.value = 0
-    dut._log.info("Activation streaming complete")
-
-
-async def collect_results(dut):
-    """Collect results from systolic array."""
-    dut._log.info("Collecting results...")
-
-    results = []
-    dut.result_ready.value = 1
-    timeout = 0
-
-    while dut.done.value != 1 and timeout < 1000:
-        await RisingEdge(dut.clk)
-        timeout += 1
-
-        if dut.result_valid.value == 1:
-            # Unpack result row
-            result_packed = dut.result_data.value.integer
-            row_result = []
-            for col in range(ARRAY_COLS):
-                val = (result_packed >> (col * ACC_WIDTH)) & ((1 << ACC_WIDTH) - 1)
-                if SIGNED_MATH:
-                    val = signed_value(val, ACC_WIDTH)
-                row_result.append(val)
-            results.append(row_result)
-            dut._log.info(f"Received result row: {row_result}")
-
-    dut.result_ready.value = 0
-    dut._log.info("Result collection complete")
-    return results
-
-
-async def run_matmul_test(dut, matrix_a, matrix_b, test_name):
-    """Run a single matrix multiplication test."""
-    global err_cnt
-
-    dut._log.info(f"\n{'='*50}")
-    dut._log.info(f"Test: {test_name}")
-    dut._log.info(f"{'='*50}")
-
-    # Print matrices
-    dut._log.info(f"Matrix A ({ARRAY_ROWS}x{K_DIM}):")
-    for row in matrix_a:
-        if SIGNED_MATH:
-            dut._log.info(f"  {[signed_value(v, DATA_WIDTH) for v in row]}")
-        else:
-            dut._log.info(f"  {row}")
-
-    dut._log.info(f"Matrix B ({K_DIM}x{ARRAY_COLS}):")
-    for row in matrix_b:
-        if SIGNED_MATH:
-            dut._log.info(f"  {[signed_value(v, WEIGHT_WIDTH) for v in row]}")
-        else:
-            dut._log.info(f"  {row}")
-
-    # Compute expected result
-    expected = compute_expected_result(matrix_a, matrix_b)
-    dut._log.info(f"Expected C ({ARRAY_ROWS}x{ARRAY_COLS}):")
-    for row in expected:
-        dut._log.info(f"  {row}")
-
-    # Start computation
-    await RisingEdge(dut.clk)
-    dut.start.value = 1
-    await RisingEdge(dut.clk)
-    dut.start.value = 0
-
-    # Wait for busy
-    while dut.busy.value != 1:
-        await RisingEdge(dut.clk)
-
-    # Run load, stream, and collect concurrently
-    await load_weights(dut, matrix_b)
-    await stream_activations(dut, matrix_a)
-    actual = await collect_results(dut)
-
-    # Wait for done
-    while dut.done.value != 1:
-        await RisingEdge(dut.clk)
-
-    # Compare results
-    local_err = 0
-    dut._log.info("\n--- Result Comparison ---")
-
-    if len(actual) > 0:
-        for i in range(min(len(actual), ARRAY_ROWS)):
-            for j in range(ARRAY_COLS):
-                if actual[i][j] != expected[i][j]:
-                    dut._log.error(f"C[{i}][{j}] mismatch: Expected {expected[i][j]}, Got {actual[i][j]}")
-                    local_err += 1
-                    err_cnt += 1
-    else:
-        dut._log.warning("No results collected")
-
-    if local_err == 0:
-        dut._log.info(f"Test '{test_name}': PASSED")
-    else:
-        dut._log.error(f"Test '{test_name}': FAILED with {local_err} errors")
-
-    # Wait between tests
-    for _ in range(10):
-        await RisingEdge(dut.clk)
-
-    return local_err == 0
+    async def run(self, kind="random", gaps=False, backpressure=False):
+        matrix_a, matrix_b = self.matrices(kind)
+        monitor = cocotb.start_soon(self.collect(
+            self.expected(matrix_a, matrix_b), backpressure))
+        try:
+            await self.start()
+            await self.load_weights(matrix_b, gaps)
+            await self.stream_activations(matrix_a, gaps)
+            await monitor
+        finally:
+            if not monitor.done():
+                monitor.kill()
 
 
-def generate_simple_matrices():
-    """Generate simple test matrices with known values."""
-    matrix_a = [[i * K_DIM + k + 1 for k in range(K_DIM)] for i in range(ARRAY_ROWS)]
-    matrix_b = [[k * ARRAY_COLS + j + 1 for j in range(ARRAY_COLS)] for k in range(K_DIM)]
-
-    # Convert to unsigned representation
-    for i in range(ARRAY_ROWS):
-        for k in range(K_DIM):
-            matrix_a[i][k] = to_unsigned(matrix_a[i][k], DATA_WIDTH) if matrix_a[i][k] < 0 else matrix_a[i][k]
-
-    for k in range(K_DIM):
-        for j in range(ARRAY_COLS):
-            matrix_b[k][j] = to_unsigned(matrix_b[k][j], WEIGHT_WIDTH) if matrix_b[k][j] < 0 else matrix_b[k][j]
-
-    return matrix_a, matrix_b
+async def setup(dut):
+    dut.clk.value = 0
+    dut.rst_n.value = 0
+    for name in ("start", "weight_valid", "act_valid", "result_ready",
+                 "weight_data", "act_data"):
+        getattr(dut, name).value = 0
+    bench = MatrixBench(dut)
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await bench.reset()
+    return bench
 
 
-def generate_identity_matrices():
-    """Generate identity matrix test."""
-    matrix_a = [[random.randint(1, 10) for _ in range(K_DIM)] for _ in range(ARRAY_ROWS)]
-    matrix_b = [[1 if k == j else 0 for j in range(ARRAY_COLS)] for k in range(K_DIM)]
-    return matrix_a, matrix_b
-
-
-def generate_random_matrices():
-    """Generate random test matrices."""
-    max_val = (1 << DATA_WIDTH) - 1
-    matrix_a = [[random.randint(0, max_val) for _ in range(K_DIM)] for _ in range(ARRAY_ROWS)]
-    matrix_b = [[random.randint(0, max_val) for _ in range(ARRAY_COLS)] for _ in range(K_DIM)]
-    return matrix_a, matrix_b
-
-
-def generate_zero_matrices():
-    """Generate zero matrix test."""
-    matrix_a = [[0 for _ in range(K_DIM)] for _ in range(ARRAY_ROWS)]
-    matrix_b = [[random.randint(1, 10) for _ in range(ARRAY_COLS)] for _ in range(K_DIM)]
-    return matrix_a, matrix_b
-
-
-def generate_signed_matrices():
-    """Generate matrices with positive and negative values."""
-    matrix_a = []
-    for i in range(ARRAY_ROWS):
-        row = []
-        for k in range(K_DIM):
-            val = (k + 1) if ((i + k) % 2 == 0) else -(k + 1)
-            row.append(to_unsigned(val, DATA_WIDTH))
-        matrix_a.append(row)
-
-    matrix_b = []
-    for k in range(K_DIM):
-        row = []
-        for j in range(ARRAY_COLS):
-            val = (j + 1) if ((k + j) % 2 == 0) else -(j + 1)
-            row.append(to_unsigned(val, WEIGHT_WIDTH))
-        matrix_b.append(row)
-
-    return matrix_a, matrix_b
-
-
-@cocotb.test()
+@cocotb.test(timeout_time=1, timeout_unit="ms")
 async def test_simple_values(dut):
-    """Test with simple known values."""
-    await dut_init(dut)
-    matrix_a, matrix_b = generate_simple_matrices()
-    await run_matmul_test(dut, matrix_a, matrix_b, "Simple Known Values")
-
-    if err_cnt > 0:
-        raise cocotb.result.TestFailure(f"Test failed with {err_cnt} errors")
+    bench = await setup(dut)
+    await bench.run("simple")
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=1, timeout_unit="ms")
 async def test_identity_matrix(dut):
-    """Test with identity matrix."""
-    global err_cnt
-    err_cnt = 0
-    await dut_init(dut)
-    matrix_a, matrix_b = generate_identity_matrices()
-    await run_matmul_test(dut, matrix_a, matrix_b, "Identity Matrix")
-
-    if err_cnt > 0:
-        raise cocotb.result.TestFailure(f"Test failed with {err_cnt} errors")
+    bench = await setup(dut)
+    await bench.run("identity")
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=1, timeout_unit="ms")
 async def test_random_matrices(dut):
-    """Test with random matrices."""
-    global err_cnt
-    err_cnt = 0
-    await dut_init(dut)
-    matrix_a, matrix_b = generate_random_matrices()
-    await run_matmul_test(dut, matrix_a, matrix_b, "Random Matrices")
-
-    if err_cnt > 0:
-        raise cocotb.result.TestFailure(f"Test failed with {err_cnt} errors")
+    bench = await setup(dut)
+    for _ in range(5):
+        await bench.run()
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=1, timeout_unit="ms")
 async def test_zero_matrix(dut):
-    """Test with zero matrix."""
-    global err_cnt
-    err_cnt = 0
-    await dut_init(dut)
-    matrix_a, matrix_b = generate_zero_matrices()
-    await run_matmul_test(dut, matrix_a, matrix_b, "Zero Matrix")
-
-    if err_cnt > 0:
-        raise cocotb.result.TestFailure(f"Test failed with {err_cnt} errors")
+    bench = await setup(dut)
+    await bench.run("zero")
 
 
-@cocotb.test()
+@cocotb.test(timeout_time=1, timeout_unit="ms")
 async def test_signed_values(dut):
-    """Test with signed values."""
-    global err_cnt
-    err_cnt = 0
-    await dut_init(dut)
+    bench = await setup(dut)
+    if bench.signed_math:
+        await bench.run("signed")
 
-    if SIGNED_MATH:
-        matrix_a, matrix_b = generate_signed_matrices()
-        await run_matmul_test(dut, matrix_a, matrix_b, "Signed Values")
-    else:
-        dut._log.info("Skipping signed test (SIGNED_MATH=0)")
 
-    if err_cnt > 0:
-        raise cocotb.result.TestFailure(f"Test failed with {err_cnt} errors")
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def test_numeric_limits(dut):
+    bench = await setup(dut)
+    await bench.run("limits")
+
+
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def test_input_gaps(dut):
+    bench = await setup(dut)
+    await bench.run(gaps=True)
+
+
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def test_output_backpressure(dut):
+    bench = await setup(dut)
+    await bench.run(backpressure=True)
+
+
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def test_stalls(dut):
+    bench = await setup(dut)
+    await bench.run(gaps=True, backpressure=True)
+
+
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def test_back_to_back(dut):
+    bench = await setup(dut)
+    await bench.run("simple")
+    await bench.run("zero")
+    await bench.run("random")
+
+
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def test_reset_during_weights(dut):
+    bench = await setup(dut)
+    _, weights = bench.matrices()
+    await bench.start()
+    await bench.send("weight", bench.pack(weights[0], bench.weight_width))
+    await bench.reset()
+    await bench.run("simple")
+
+
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def test_reset_during_compute(dut):
+    bench = await setup(dut)
+    activations, weights = bench.matrices()
+    await bench.start()
+    await bench.load_weights(weights)
+    await bench.send("act", bench.pack([row[0] for row in activations], bench.data_width))
+    await bench.reset()
+    await bench.run("simple")
