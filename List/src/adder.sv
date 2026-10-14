@@ -5,130 +5,115 @@
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Last Update: 19/06/2025 09:25 PM
 // Last Updated By: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Description: 
-// Additional Comments: 
-// 
+// Description:
+// Additional Comments:
+//
 //////////////////////////////////////////////////////////////////////////////////
 
 module adder #(
     parameter DATA_WIDTH = 32,
-    parameter LENGTH = 8, //need not to be power of 2
-    parameter SUM_METHOD = 0, // 0: parallel (combo) sum, 1: sequential sum, 2: adder tree. //ICARUS does not support string overriden to parameter in CLI. 
-    localparam LENGTH_WIDTH =  $clog2(LENGTH),
-    localparam DATA_OUT_WIDTH = $clog2(LENGTH)+DATA_WIDTH-1 
+    parameter LENGTH = 8,
+    parameter SUM_METHOD = 0,
+    localparam LENGTH_WIDTH = (LENGTH > 1) ? $clog2(LENGTH) : 1,
+    localparam DATA_OUT_WIDTH = LENGTH_WIDTH + DATA_WIDTH
 )(
-    input  wire                               clk,
-    input  wire                               rst,
-    input  wire [LENGTH*DATA_WIDTH-1:0]       data_in,
-    input  wire                               sum_en,
-    output reg  [LENGTH_WIDTH+DATA_WIDTH-1:0] sum_result,
-    output reg                                sum_done,
-    output reg                                sum_in_progress
+    input wire clk, rst,
+    input wire [LENGTH*DATA_WIDTH-1:0] data_in,
+    input wire sum_en,
+    output reg [DATA_OUT_WIDTH-1:0] sum_result,
+    output reg sum_done,
+    output reg sum_in_progress
 );
-
-    localparam NO_OF_STAGE = $clog2(LENGTH);
-    localparam STG_PTR_WIDTH = $clog2(NO_OF_STAGE);
-    localparam TOTAL_INPUT_INT = 2**NO_OF_STAGE; // round up to integer, LENGTH needs not to be in power of 2. 
-    
-    reg [DATA_WIDTH-1:0]    data_in_unpacked [LENGTH-1:0]; 
-    reg [LENGTH_WIDTH-1:0]  cur_ptr;
-    reg [STG_PTR_WIDTH-1:0] stg_ptr;
-    reg [DATA_WIDTH-1:0]    output_stage [NO_OF_STAGE-1:0][TOTAL_INPUT_INT-1:0];
-    integer i,j;
-
-    // icarus does not support stream unpacking, so we need to do it mannually
-    // always @ (*) begin
-    //    data_in_unpacked = { >> DATA_WIDTH {data_in}};
-    // end 
-    always @(*) begin
-        for (i = 0; i < LENGTH; i = i + 1) begin
-            data_in_unpacked[i] = data_in[i*DATA_WIDTH +: DATA_WIDTH];
+    generate
+        if (DATA_WIDTH < 1 || LENGTH < 1 || SUM_METHOD < 0 || SUM_METHOD > 2) begin : gen_invalid
+            initial $fatal(1, "Invalid adder parameters");
         end
-    end
-    // icarus does not support stream unpacking, so we need to do it mannually
-
-    generate 
-    if(SUM_METHOD == 0) begin  //: parallel sum (Combo) 
-        always @(*) begin
-            for(i=0; i<LENGTH; i=i+1) begin
-                if(i == 0) 
-                    sum_result = data_in_unpacked[i];
-                else 
-                    sum_result = sum_result + data_in_unpacked[i];
+        if (SUM_METHOD == 0) begin : gen_parallel
+            integer item;
+            always @(*) begin
+                sum_result = 0;
+                for (item = 0; item < LENGTH; item = item + 1)
+                    sum_result = sum_result + data_in[item*DATA_WIDTH +: DATA_WIDTH];
+                sum_done = sum_en && !rst;
+                sum_in_progress = 1'b0;
             end
-            sum_done = sum_en;
-            sum_in_progress = 1'b0;
-        end
-    end else if(SUM_METHOD == 1) begin //: sequential sum (
-        always @(posedge clk, posedge rst) begin
-            if(rst) begin
-                sum_result <= 'd0;
-                cur_ptr <= 'b0;
-                sum_done <= 1'b0;
-                sum_in_progress <= 1'b0;
-            end else if(!sum_en) begin
-                sum_done <= 1'b0;
-                sum_in_progress <= 1'b0;
-                cur_ptr <= 'b0;
-            end else if(sum_en & cur_ptr < (LENGTH-1)) begin
-                sum_result <= sum_result + data_in_unpacked[cur_ptr];
-                cur_ptr <= cur_ptr + 'b1;
-                sum_in_progress <= 1'b1;
-            end else if(sum_en & !sum_done & cur_ptr == (LENGTH-1))begin //last element
-                sum_result <= sum_result + data_in_unpacked[cur_ptr];
-                sum_done <= 1'b1;
-                sum_in_progress <= 1'b0;
-            end
-        end
-    end else begin //: ADDER TREE
-        always @ (*) begin
-            for(i=0; i<TOTAL_INPUT_INT; i=i+1) begin
-                if(i<LENGTH) 
-                    output_stage[0][i] <= data_in_unpacked[i];
-                else
-                    output_stage[0][i] <= 'b0;    
-            end
-        end
-        
-        always @ (posedge clk, posedge rst) begin
-            if(rst) begin
-                for(i=1; i<NO_OF_STAGE; i=i+1) begin
-                    for(j=0; j<TOTAL_INPUT_INT; j=j+1) begin 
-                        output_stage[i][j] <= 'd0;
+        end else if (SUM_METHOD == 1) begin : gen_sequential
+            reg [LENGTH*DATA_WIDTH-1:0] snapshot;
+            reg [LENGTH_WIDTH-1:0] pointer;
+            always @(posedge clk or posedge rst) begin
+                if (rst) begin
+                    snapshot <= 0;
+                    pointer <= 0;
+                    sum_result <= 0;
+                    sum_done <= 0;
+                    sum_in_progress <= 0;
+                end else if (!sum_en) begin
+                    pointer <= 0;
+                    sum_done <= 0;
+                    sum_in_progress <= 0;
+                end else if (!sum_done) begin
+                    if (!sum_in_progress) begin
+                        snapshot <= data_in;
+                        // Start a fresh accumulation for every request.
+                        sum_result <= data_in[0 +: DATA_WIDTH];
+                        pointer <= (LENGTH > 1) ? 1 : 0;
+                        sum_done <= (LENGTH == 1);
+                        sum_in_progress <= (LENGTH > 1);
+                    end else begin
+                        sum_result <= sum_result + snapshot[pointer*DATA_WIDTH +: DATA_WIDTH];
+                        if (pointer == LENGTH - 1) begin
+                            sum_done <= 1'b1;
+                            sum_in_progress <= 1'b0;
+                        end else begin
+                            pointer <= pointer + 1'b1;
+                        end
                     end
                 end
-            end else if(!sum_en) begin
-                for(i=1; i<NO_OF_STAGE; i=i+1) begin
-                    for(j=0; j<TOTAL_INPUT_INT; j=j+1) begin 
-                        output_stage[i][j] <= 'b0;
-                    end
-                end            
-            end else if(sum_en | stg_ptr < (NO_OF_STAGE-1)) begin
-                for(i=0; (i*2+1)<TOTAL_INPUT_INT; i=i+1)
-                    output_stage[stg_ptr+1][i] <= output_stage[stg_ptr][i*2] + output_stage[stg_ptr][i*2+1]; // unused node will remain 0
             end
-        end 
-        
-        always @ (posedge clk, posedge rst) begin
-            if(rst) begin
-                stg_ptr <= 'b0;
-                sum_result <= 'd0;
-                sum_done <= 1'b0;
-                sum_in_progress <= 1'b0;
-            end else if(!sum_en) begin
-                stg_ptr <= 'b0;
-                sum_done <= 1'b0;
-                sum_in_progress <= 1'b0;
-            end else if(sum_en & stg_ptr < (NO_OF_STAGE-1)) begin
-                stg_ptr <= stg_ptr + 'b1;
-                sum_in_progress <= 1'b1;
-            end else if(sum_en & !sum_done & stg_ptr == (NO_OF_STAGE-1)) begin //last stage
-                sum_result <= output_stage[NO_OF_STAGE-1][0];
-                sum_in_progress <= 1'b0;
-                sum_done <= 1'b1;
+        end else begin : gen_tree
+            localparam STAGES = $clog2(LENGTH);
+            localparam PADDED_LENGTH = 2**STAGES;
+            // Every stage retains the full sum width, including carry bits.
+            reg [DATA_OUT_WIDTH-1:0] tree [0:STAGES][0:PADDED_LENGTH-1];
+            reg [STAGES:0] valid;
+            integer stage, node;
+            always @(posedge clk or posedge rst) begin
+                if (rst) begin
+                    valid <= 0;
+                    sum_result <= 0;
+                    sum_done <= 0;
+                    sum_in_progress <= 0;
+                    for (stage = 0; stage <= STAGES; stage = stage + 1)
+                        for (node = 0; node < (PADDED_LENGTH >> stage); node = node + 1)
+                            tree[stage][node] <= 0;
+                end else if (!sum_en) begin
+                    valid <= 0;
+                    sum_done <= 0;
+                    sum_in_progress <= 0;
+                end else if (!sum_done) begin
+                    valid[0] <= !sum_in_progress;
+                    if (!sum_in_progress) begin
+                        sum_in_progress <= 1'b1;
+                        for (node = 0; node < PADDED_LENGTH; node = node + 1) begin
+                            if (node < LENGTH)
+                                tree[0][node] <= data_in[node*DATA_WIDTH +: DATA_WIDTH];
+                            else
+                                tree[0][node] <= 0;
+                        end
+                    end
+                    for (stage = 1; stage <= STAGES; stage = stage + 1) begin
+                        valid[stage] <= valid[stage-1];
+                        if (valid[stage-1])
+                            for (node = 0; node < (PADDED_LENGTH >> stage); node = node + 1)
+                                tree[stage][node] <= tree[stage-1][2*node] + tree[stage-1][2*node+1];
+                    end
+                    if (valid[STAGES]) begin
+                        sum_result <= tree[STAGES][0];
+                        sum_done <= 1'b1;
+                        sum_in_progress <= 1'b0;
+                    end
+                end
             end
         end
-    end
     endgenerate
-    
 endmodule

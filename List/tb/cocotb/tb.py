@@ -1,423 +1,264 @@
+"""Bounded, model-based checks of the actual List transaction interface."""
+
+import os
 import random
-import asyncio
-import math
+
 import cocotb
-import cocotb.result
-from cocotb.triggers import Timer, RisingEdge, ReadOnly, with_timeout
 from cocotb.clock import Clock
-from cocotb_bus.drivers import BusDriver
-from cocotb_bus.monitors import BusMonitor
-from cocotb.binary import BinaryValue
+from cocotb.triggers import FallingEdge, ReadOnly, RisingEdge
 
-#BIN string
-#BinaryValue(dut.data_wr.value, n_bits=8) ; BinaryValue.integar ; BinaryValue.hex ; BinaryValue.binstr; BinaryValue.signed_integer ; can represent x,z
 
-DUT_DATA_WIDTH = 8
-DUT_LENGTH = 8 # Max number of nodes in the list
-DUT_SUM_METHOD = 0 # 0: parallel (combo) sum, 1: sequentia sum, 2: adder tree. //ICARUS does not support string overriden to parameter in CLI.
+READ, INSERT, FIND_ALL, FIND_FIRST, SUM, ASCENDING, DESCENDING, DELETE = range(8)
 
-LENGTH_WIDTH = int(math.log2(DUT_LENGTH))
-DATA_OUT_WIDTH = LENGTH_WIDTH + DUT_DATA_WIDTH
-MAX_VALUE = 2**DUT_DATA_WIDTH - 1
 
-TB_CLK_PERIOD = 30 # TB clk generator
-TB_SIM_TIMEOUT = 30 # TB sim timeout 30ms
-TB_TEST_WEIGHT = 1
+class ListBench:
+    def __init__(self, dut):
+        self.dut = dut
+        self.capacity = int(dut.LENGTH.value)
+        self.mask = (1 << int(dut.DATA_WIDTH.value)) - 1
+        self.index_mask = (1 << len(dut.index_in)) - 1
+        self.limit = int(os.getenv("TB_TIMEOUT_CYCLES", "1000"))
+        self.random = random.Random(int(os.getenv("TB_SEED", "1")))
+        self.values = []
 
-OP_READ = 0b000
-OP_INSERT = 0b001
-OP_FIND_ALL_INDEX = 0b010
-OP_FIND_1ST_INDEX = 0b011
-OP_SUM = 0b100
-OP_SORT_ASC = 0b101
-OP_SORT_DES = 0b110
-OP_DELETE = 0b111
+    async def initialize(self):
+        cocotb.start_soon(Clock(self.dut.clk, 10, units="ns").start())
+        self.dut.op_en.value = 0
+        self.dut.op_sel.value = 0
+        self.dut.data_in.value = 0
+        self.dut.index_in.value = 0
+        await self.reset()
 
-err_cnt = 0
+    async def reset(self):
+        await FallingEdge(self.dut.clk)
+        self.dut.op_en.value = 0
+        self.dut.rst.value = 1
+        for _ in range(2):
+            await RisingEdge(self.dut.clk)
+        await FallingEdge(self.dut.clk)
+        self.dut.rst.value = 0
+        await RisingEdge(self.dut.clk)
+        await ReadOnly()
+        assert int(self.dut.len.value) == 0
+        assert not self.dut.op_done.value and not self.dut.op_in_progress.value
+        assert not self.dut.op_error.value
+        self.values = []
+        await FallingEdge(self.dut.clk)
 
-#    list #(
-#       .DATA_WIDTH(DUT_DATA_WIDTH),
-#       .LENGTH(DUT_LENGTH),
-#       .SUM_METHOD(DUT_SUM_METHOD)
-#    ) DUT (
-#       /*input  wire                              */.clk(clk),
-#       /*input  wire                              */.rst(rst),
-#       /*input  wire [1:0]                        */.op_sel(op_sel),
-#       /*input  wire                              */.op_en(op_en),
-#       /*input  wire [DATA_WIDTH-1:0]             */.data_in(data_in),
-#       /*input  wire [LENGTH_WIDTH-1:0]           */.index_in(index_in),	
-#       /*output reg  [LENGTH_WIDTH+DATA_WIDTH-1:0]*/.data_out(data_out),  
-#       /*output reg                               */.op_done(op_done),
-#       /*output reg                               */.op_in_progress(op_in_progress),
-#       /*output reg                               */.op_error(op_error),
-#       /*output wire                              */.len(len)
-#    );
-
-# Below is not a good way to define "hash_table" in python, but for the sake of simplicity, we define it like this.
-list_exp = []
-
-async def list_read(dut, index):
-    global list_exp
-    global err_cnt
-    cocotb.log.info("OP_READ at index %0d", index)
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    dut.op_sel.value = OP_READ
-    dut.op_en.value = 1
-    dut.index_in.value = index
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    if(dut.op_done.value == 0):
-        await RisingEdge(dut.op_done)
-    if (index >= len(list_exp)):
-        if(dut.op_error.value == 1):
-            cocotb.log.info("Data read out of bound, fault flag is asserted correctly")
+    async def request(self, operation, index=0, value=0, disturb=False):
+        assert not self.dut.op_done.value and not self.dut.op_in_progress.value
+        await FallingEdge(self.dut.clk)
+        self.dut.op_sel.value = operation
+        self.dut.index_in.value = index & self.index_mask
+        self.dut.data_in.value = value & self.mask
+        self.dut.op_en.value = 1
+        matches = []
+        for cycle in range(self.limit):
+            await RisingEdge(self.dut.clk)
+            await ReadOnly()
+            done = int(self.dut.op_done.value)
+            busy = int(self.dut.op_in_progress.value)
+            error = int(self.dut.op_error.value)
+            data = int(self.dut.data_out.value)
+            if done and busy:
+                assert operation == FIND_ALL, "Unexpected intermediate completion"
+                assert not error, "Search match reported an error"
+                matches.append(data)
+            if done and not busy:
+                result = data, error, matches
+                break
+            await FallingEdge(self.dut.clk)
+            # Busy operations must latch the one-cycle command and ignore new requests.
+            self.dut.op_en.value = int(disturb and busy)
+            self.dut.op_sel.value = INSERT
+            self.dut.index_in.value = self.index_mask
+            self.dut.data_in.value = (value ^ self.mask) & self.mask
         else:
-            cocotb.log.error("Data read out of bound, fault flag is not asserted")
-            err_cnt += 1
-    else:
-        if (dut.op_error.value == 1):
-            cocotb.log.error("Data read is in bound, but fault flag is asserted incorrectly")
-            err_cnt += 1
-        else:
-            if (dut.data_out.value == list_exp[index]):
-                cocotb.log.info("Data read: %0d", dut.data_out.value)
-            else:
-                cocotb.log.error("Data read: %0d, Data Exp: %0d", dut.data_out.value, list_exp[index])
-                err_cnt += 1
-    await RisingEdge(dut.clk)
-    await Timer(1, units='ns')  # Wait for the clock to stabilize
-    dut.op_en.value = 0
+            raise AssertionError(f"Operation {operation} timed out after {self.limit} cycles")
+        await FallingEdge(self.dut.clk)
+        self.dut.op_en.value = 0
+        await RisingEdge(self.dut.clk)
+        await ReadOnly()
+        assert not self.dut.op_done.value, "Completion must clear on the next clock"
+        assert not self.dut.op_in_progress.value
+        await FallingEdge(self.dut.clk)
+        return result
 
-async def list_read_n_burst(dut, n):
-    global list_exp
-    global err_cnt
-    cocotb.log.info("OP_READ_N_BURST for %d elements", n)
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    dut.op_sel.value = OP_READ
-    dut.op_en.value = 1
-    dut.index_in.value = 0  # Start reading from index 0
-    for i in range(n-1):
+    async def insert(self, index, value):
+        _, error, _ = await self.request(INSERT, index, value)
+        full = len(self.values) == self.capacity
+        assert error == full
+        if not full:
+            self.values.insert(min(index & self.index_mask, len(self.values)), value & self.mask)
+        assert int(self.dut.len.value) == len(self.values)
+
+    async def delete(self, index):
+        _, error, _ = await self.request(DELETE, index)
+        index &= self.index_mask
+        assert error == (index >= len(self.values))
+        if not error:
+            del self.values[index]
+        assert int(self.dut.len.value) == len(self.values)
+
+    async def read(self, index):
+        value, error, _ = await self.request(READ, index)
+        index &= self.index_mask
+        assert error == (index >= len(self.values))
+        if not error:
+            assert value == self.values[index], f"Index {index}: got {value}, expected {self.values[index]}"
+
+    async def check_contents(self):
+        assert int(self.dut.len.value) == len(self.values)
+        for index in range(len(self.values)):
+            await self.read(index)
+
+    async def sum(self, disturb=False):
+        value, error, _ = await self.request(SUM, disturb=disturb)
+        assert not error
+        assert value == sum(self.values), f"Sum: got {value}, expected {sum(self.values)}"
+
+    async def sort(self, descending=False, disturb=False):
+        _, error, _ = await self.request(DESCENDING if descending else ASCENDING, disturb=disturb)
+        assert not error
+        self.values.sort(reverse=descending)
+        await self.check_contents()
+
+    async def find(self, value, all_matches=False, disturb=False):
+        expected = [i for i, item in enumerate(self.values) if item == (value & self.mask)]
+        data, error, matches = await self.request(FIND_ALL if all_matches else FIND_FIRST,
+                                                  value=value, disturb=disturb)
+        assert error == (not expected), f"Search error: got {error}, matches {expected}"
+        if all_matches:
+            assert matches == expected, f"Search indices: got {matches}, expected {expected}"
+        elif expected:
+            assert data == expected[0]
+
+
+async def setup(dut):
+    bench = ListBench(dut)
+    await bench.initialize()
+    return bench
+
+
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def test_empty_operations(dut):
+    bench = await setup(dut)
+    await bench.read(0)
+    await bench.delete(0)
+    for value in (0, bench.mask):
+        await bench.find(value)
+        await bench.find(value, all_matches=True)
+    await bench.sum()
+    await bench.sort()
+    await bench.sort(descending=True)
+    await bench.insert(0, bench.mask)
+    await bench.sum()
+
+
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def test_insert_delete_boundaries(dut):
+    bench = await setup(dut)
+    for index in range(bench.capacity):
+        await bench.insert(0 if index % 2 else bench.index_mask, index + 1)
+        await bench.check_contents()
+    await bench.insert(0, 7)
+    await bench.check_contents()
+    for _ in range(bench.capacity):
+        await bench.delete(len(bench.values) // 2)
+        await bench.check_contents()
+        await bench.sum()
+    await bench.delete(0)
+    await bench.read(0)
+
+
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def test_search_results(dut):
+    bench = await setup(dut)
+    for index in range(bench.capacity):
+        await bench.insert(index, 0 if index % 2 else bench.mask)
+    for value in (0, bench.mask):
+        await bench.find(value, disturb=True)
+        await bench.find(value, all_matches=True, disturb=True)
+    await bench.check_contents()
+    await bench.reset()
+    for index in range(bench.capacity):
+        await bench.insert(index, 0)
+    await bench.find(bench.mask)
+    await bench.find(bench.mask, all_matches=True)
+    await bench.find(0, all_matches=True)
+
+
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def test_repeated_sum_and_maximum(dut):
+    bench = await setup(dut)
+    for index in range(bench.capacity):
+        await bench.insert(index, bench.mask)
+    for _ in range(3):
+        await bench.sum(disturb=True)
+    await bench.delete(0)
+    await bench.sum()
+    await bench.insert(0, 1)
+    await bench.sum()
+    await bench.check_contents()
+
+
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def test_sort_patterns(dut):
+    bench = await setup(dut)
+    patterns = [list(range(bench.capacity)), list(reversed(range(bench.capacity))),
+                [bench.mask if index % 2 else 0 for index in range(bench.capacity)],
+                [bench.mask] * bench.capacity]
+    for pattern in patterns:
+        await bench.reset()
+        for index, value in enumerate(pattern):
+            await bench.insert(index, value)
+        await bench.sort(disturb=True)
+        await bench.sort(descending=True, disturb=True)
+        await bench.sort()
+        await bench.sum()
+
+
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def test_random_operations(dut):
+    bench = await setup(dut)
+    for _ in range(120):
+        operation = bench.random.randrange(8)
+        index = bench.random.randrange(bench.index_mask + 1)
+        value = bench.random.randrange(bench.mask + 1)
+        if operation == INSERT:
+            await bench.insert(index, value)
+        elif operation == DELETE:
+            await bench.delete(index)
+        elif operation == READ:
+            await bench.read(index)
+        elif operation == SUM:
+            await bench.sum()
+        elif operation in (ASCENDING, DESCENDING):
+            await bench.sort(operation == DESCENDING)
+        else:
+            await bench.find(value, operation == FIND_ALL)
+    await bench.check_contents()
+
+
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def test_reset_during_operations(dut):
+    bench = await setup(dut)
+    for operation in (SUM, ASCENDING, FIND_ALL):
+        for index in range(bench.capacity):
+            await bench.insert(index, bench.mask - (index % 2))
+        await FallingEdge(dut.clk)
+        dut.op_sel.value = operation
+        dut.data_in.value = bench.mask
+        dut.op_en.value = 1
         await RisingEdge(dut.clk)
-        await Timer(1, units='ns')  # Wait for the clock to stabilize
-        if(dut.op_done.value == 0):
-            await RisingEdge(dut.op_done)
-        if (i >= len(list_exp)):
-            if(dut.op_error.value == 1):
-                cocotb.log.info("Data read out of bound, fault flag is asserted correctly")
-            else:
-                cocotb.log.error("Data read out of bound, fault flag is not asserted")
-                err_cnt += 1
-        else:
-            if (dut.op_error.value == 1):
-                cocotb.log.error("Data read is in bound, but fault flag is asserted incorrectly")
-                err_cnt += 1
-            else:
-                if (dut.data_out.value == list_exp[i]):
-                    cocotb.log.info("Data read: %0d", dut.data_out.value)
-                else:
-                    cocotb.log.error("Data read: %0d, Data Exp: %0d", dut.data_out.value, list_exp[i])
-                    err_cnt += 1
-        dut.index_in.value = i + 1  # Update index for the next read
-        
-    await RisingEdge(dut.clk)
-    await Timer(1, units='ns')  # Wait for the clock to stabilize
-    dut.op_en.value = 0
-
-async def list_insert(dut, index, value):
-    global list_exp
-    global err_cnt
-    cocotb.log.info("OP_INSERT at index %0d, value %0d", index, value)
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    dut.op_sel.value = OP_INSERT
-    dut.op_en.value = 1
-    dut.data_in.value = value
-    dut.index_in.value = index
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    if(dut.op_done.value == 0):
-        await RisingEdge(dut.op_done)
-    
-    if (len(list_exp) >= DUT_LENGTH):
-        if(dut.op_error.value == 1):
-            cocotb.log.info("Data insert out of bound, fault flag is asserted correctly")
-        else:
-            cocotb.log.error("Data insert out of bound, fault flag is not asserted")
-            err_cnt += 1
-    else:
-        if (dut.op_error.value == 1):
-            cocotb.log.error("Data insert is in bound, but fault flag is asserted incorrectly")
-            err_cnt += 1    
-        if (index >= len(list_exp)):
-            list_exp.append(value)  # Update the expected list content
-        else:
-            list_exp.insert(index, value)  # Insert the value at the specified inde
-            
-    await RisingEdge(dut.clk)
-    await Timer(1, units='ns')  # Wait for the clock to stabilize
-    dut.op_en.value = 0
-
-    cocotb.log.info("List content after insert: %s", list_exp)
-
-async def list_delete(dut, index):
-    global list_exp
-    global err_cnt
-    cocotb.log.info("OP_DELETE at index %0d", index)
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    dut.op_sel.value = OP_DELETE
-    dut.op_en.value = 1
-    dut.index_in.value = index
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    if(dut.op_done.value == 0):
-        await RisingEdge(dut.op_done)
-    
-    if (index >= len(list_exp)):
-        if(dut.op_error.value == 1):
-            cocotb.log.info("Data delete out of bound, fault flag is asserted correctly")
-        else:
-            cocotb.log.error("Data delete out of bound, fault flag is not asserted")
-            err_cnt += 1
-    else:
-        if (dut.op_error.value == 1):
-            cocotb.log.error("Data delete is in bound, but fault flag is asserted incorrectly")
-            err_cnt += 1
-        list_exp.pop(index)  # Update the expected list content
-    
-    await RisingEdge(dut.clk)
-    await Timer(1, units='ns')  # Wait for the clock to stabilize
-    dut.op_en.value = 0
-
-    cocotb.log.info("List content after delete: %s", list_exp)
-
-async def list_sum(dut):
-    global list_exp
-    global err_cnt
-    cocotb.log.info("OP_SUM")
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    dut.op_sel.value = OP_SUM
-    dut.op_en.value = 1
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    if (dut.op_done.value == 0):
-        await RisingEdge(dut.op_done)
-    
-    if (dut.op_error.value == 1):
-        cocotb.log.error("Sum operation failed, fault flag is asserted incorrectly")
-        err_cnt += 1
-
-    expected_sum = sum(list_exp)
-    if (dut.data_out.value == expected_sum):
-        cocotb.log.info("Sum result: %0d", dut.data_out.value)
-    else:
-        cocotb.log.error("Sum result: %0d, Expected: %0d", dut.data_out.value, expected_sum)
-        err_cnt += 1
-    
-    await RisingEdge(dut.clk)
-    await Timer(1, units='ns')  # Wait for the clock to stabilize
-    dut.op_en.value = 0
-
-async def list_sort_ascending(dut):
-    global list_exp
-    global err_cnt
-    cocotb.log.info("OP_SORT_ASC")
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    dut.op_sel.value = OP_SORT_ASC
-    dut.op_en.value = 1
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    if (dut.op_done.value == 0):
-        await RisingEdge(dut.op_done)
-    
-    if (dut.op_error.value == 1):
-        cocotb.log.error("Sort ascending operation failed, fault flag is asserted incorrectly")
-        err_cnt += 1
-
-    list_exp.sort()
-    
-    await RisingEdge(dut.clk)
-    await Timer(1, units='ns')  # Wait for the clock to stabilize
-    dut.op_en.value = 0
-
-    cocotb.log.info("List content after sort ascending: %s", list_exp)
-
-async def list_sort_descending(dut):
-    global list_exp
-    global err_cnt
-    cocotb.log.info("OP_SORT_DES")
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    dut.op_sel.value = OP_SORT_DES
-    dut.op_en.value = 1
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    if (dut.op_done.value == 0):
-        await RisingEdge(dut.op_done)
-    
-    if (dut.op_error.value == 1):
-        cocotb.log.error("Sort descending operation failed, fault flag is asserted incorrectly")
-        err_cnt += 1
-
-    list_exp.sort(reverse=True)
-    
-    await RisingEdge(dut.clk)
-    await Timer(1, units='ns')  # Wait for the clock to stabilize
-    dut.op_en.value = 0
-
-    cocotb.log.info("List content after sort descending: %s", list_exp)
-
-async def list_find_1st_index(dut, value):
-    global list_exp
-    global err_cnt
-    cocotb.log.info("OP_FIND_1ST_INDEX for value %0d", value)
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    dut.op_sel.value = OP_FIND_1ST_INDEX
-    dut.op_en.value = 1
-    dut.data_in.value = value
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    if(dut.op_done.value == 0):
-        await RisingEdge(dut.op_done)
-
-    if value in list_exp:
-        if (dut.op_error.value == 1):
-            cocotb.log.error("Fault flag is asserted incorrectly")
-            err_cnt += 1
-        expected_index = list_exp.index(value)
-        if (dut.data_out.value == expected_index):
-            cocotb.log.info("First index found: %0d", dut.data_out.value)
-        else:
-            cocotb.log.error("First index found: %0d, Expected: %0d", dut.data_out.value, expected_index)
-            err_cnt += 1
-    else:
-        if (dut.op_error.value == 1):
-            cocotb.log.info("Index is not found in list, fault flag is asserted correctly")
-        else:
-            cocotb.log.error("Index is not found in list, but fault flag is not asserted")
-            err_cnt += 1
-    
-    await RisingEdge(dut.clk)
-    await Timer(1, units='ns')  # Wait for the clock to stabilize
-    dut.op_en.value = 0
-
-async def list_find_all_index(dut, value):
-    global list_exp
-    global err_cnt
-    cocotb.log.info("OP_FIND_ALL_INDEX for value %0d", value)
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    dut.op_sel.value = OP_FIND_ALL_INDEX
-    dut.op_en.value = 1
-    dut.data_in.value = value
-    await RisingEdge(dut.clk)
-    await Timer (1, units='ns')  # Wait for the clock to stabilize
-    indices = [i for i, x in enumerate(list_exp) if x == value]
-    cnt = 0
-    if indices:
-        while (cnt < len(indices)):
-            if(dut.op_done.value == 1):
-                if(indices[cnt] == dut.data_out.value):
-                    cocotb.log.info("Value %0d found at index %0d", value, dut.data_out.value)
-                else:
-                    cocotb.log.error("Value %0d found at index %0d, Expected: %0d", value, dut.data_out.value, indices[cnt])
-                    err_cnt += 1
-                cnt += 1
-            if(cnt <= (len(indices)-1) & dut.op_in_progress.value == 0):
-                cocotb.log.error("OP_FIND_ALL_INDEX all idex is not found, but op_in_progress is deasserted incorrectly")
-            if (dut.op_error.value == 1):
-                cocotb.log.error("Fault flag is asserted incorrectly")
-                err_cnt += 1
+        await FallingEdge(dut.clk)
+        dut.op_en.value = 0
+        await bench.reset()
+        for _ in range(bench.capacity + 3):
             await RisingEdge(dut.clk)
-            await Timer(1, units='ns')
-    else:
-        if (dut.op_done.value == 1):
-            await RisingEdge(dut.op_done)
-        if (dut.op_error.value == 1):
-            cocotb.log.info("Indices are not found in list, fault flag is asserted correctly")
-        else:
-            cocotb.log.error("Indices are not found in list, but fault flag is not asserted")
-            err_cnt += 1
-    
-    await RisingEdge(dut.clk)
-    await Timer(1, units='ns')  # Wait for the clock to stabilize
-    dut.op_en.value = 0
-
-async def dut_init(dut):
-    global DUT_DATA_WIDTH
-    global DUT_LENGTH 
-    global DUT_SUM_METHOD 
-    global LENGTH_WIDTH 
-    global DATA_OUT_WIDTH 
-    global MAX_VALUE 
-    global list_exp
-
-    DUT_DATA_WIDTH = dut.DATA_WIDTH.value
-    DUT_LENGTH = dut.LENGTH.value
-    DUT_SUM_METHOD = dut.SUM_METHOD.value  # 0: parallel (combo) sum, 1: sequential sum, 2: adder tree
-    LENGTH_WIDTH = int(math.log2(DUT_LENGTH))
-    DATA_OUT_WIDTH = LENGTH_WIDTH + DUT_DATA_WIDTH
-    MAX_VALUE = 2**DUT_DATA_WIDTH - 1
-
-    await cocotb.start(Clock(dut.clk, TB_CLK_PERIOD, units='ns').start())  # Start the clock generator
-    dut.rst.value = 1
-    dut.op_en.value = 0
-    dut.op_sel.value = 0
-    dut.data_in.value = 0
-    dut.index_in.value = 0
-    dut._log.info("DUT reset")
-    list_exp = []
-    await Timer(10, units='ns')
-    dut.rst.value = 0
-    await Timer(10, units='ns')
-    cocotb.log.info("DUT reset done")
-
-async def timeout():
-    await Timer(TB_SIM_TIMEOUT, units='ms')
-    cocotb.log.error("Simulation timeout")
-    raise cocotb.result.TestFailure("Simulation timeout")
-
-@cocotb.test()
-async def basic_op_test(dut):
-    #timeout_task = asyncio.create_task(timeout())
-    cocotb.start_soon(timeout())
-    await dut_init(dut)
-    cocotb.log.info("SEED NUMBER = %d",cocotb.RANDOM_SEED)
-    
-    await list_insert(dut, 0, random.randint(0,2**DUT_DATA_WIDTH-1))
-    await list_insert(dut, 1, random.randint(0,2**DUT_DATA_WIDTH-1))
-    await list_insert(dut, 2, random.randint(0,2**DUT_DATA_WIDTH-1))
-    await list_insert(dut, 3, list_exp[2])
-    await list_insert(dut, 4, list_exp[0])
-
-    await list_read(dut, 0)
-    await list_read(dut, 1)
-    await list_read(dut, 2)
-    await list_read(dut, 3)
-    await list_read(dut, 4)
-    await list_read(dut, 5) # This should trigger an out-of-bounds error
-
-    await list_delete(dut, 5) # This should trigger an out-of-bounds error
-    await list_delete(dut, 3)
-
-    await list_sum(dut)
-
-    await list_sort_ascending(dut)
-    await list_read_n_burst(dut, 5)
-    
-    await list_sort_descending(dut)
-    await list_read_n_burst(dut, 5)
-
-    await list_find_1st_index(dut, list_exp[1])
-    await list_find_all_index(dut, list_exp[2])
-    #timeout_task.cancel()
-    #task.kill()
-
-    if (err_cnt > 0):
-        cocotb.log.error("Errors count = %d",err_cnt)
-        raise cocotb.result.TestFailure() 
+            await ReadOnly()
+            assert not dut.op_done.value and not dut.op_in_progress.value
+        await bench.insert(0, 1)
+        await bench.sum()
+        await bench.read(0)
+        await bench.reset()

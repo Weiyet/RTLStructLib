@@ -5,17 +5,17 @@
 // Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
 // Last Update: 19/06/2025 07:57 PM
 // Last Updated By: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Description: List 
-// Additional Comments: 
-// 
+// Description: List
+// Additional Comments:
+//
 //////////////////////////////////////////////////////////////////////////////////
 
 
 module list #(
     parameter DATA_WIDTH = 32,
     parameter LENGTH = 8,
-    parameter SUM_METHOD = 0, // 0: parallel (combo) sum, 1: sequentia sum, 2: adder tree. //ICARUS does not support string overriden to parameter in CLI. 
-    localparam LENGTH_WIDTH =  $clog2(LENGTH)
+    parameter SUM_METHOD = 0, // 0: parallel (combo) sum, 1: sequentia sum, 2: adder tree. //ICARUS does not support string overriden to parameter in CLI.
+    localparam LENGTH_WIDTH = (LENGTH > 1) ? $clog2(LENGTH) : 1
 )(
     input  wire                                clk,
     input  wire                                rst,
@@ -23,14 +23,14 @@ module list #(
     input  wire                                op_en,
     input  wire [DATA_WIDTH-1:0]               data_in,
     input  wire [LENGTH_WIDTH-1:0]             index_in,
-    output reg  [LENGTH_WIDTH+DATA_WIDTH-1:0]  data_out,  
+    output reg  [LENGTH_WIDTH+DATA_WIDTH-1:0]  data_out,
     output reg                                 op_done,
     output reg                                 op_in_progress,
     output reg                                 op_error,
     output wire [$clog2(LENGTH+1)-1:0]         len
 );
 
-  //  localparam LENGTH_WIDTH = $clog2(LENGTH+1) 
+  //  localparam LENGTH_WIDTH = $clog2(LENGTH+1)
     localparam IDLE        = 3'b000;
     localparam SUM         = 3'b001;
     localparam SORT        = 3'b010;
@@ -38,7 +38,7 @@ module list #(
     localparam SEARCH_1ST  = 3'b011;
     localparam SEARCH_ALL  = 3'b101;
     localparam ACCESS_DONE = 3'b100;
-    
+
     reg [$clog2(LENGTH+1)-1:0]       data_count;
     reg [DATA_WIDTH-1:0]             data_stored [LENGTH-1:0]; // could implement with RAM for large size of data
     reg [DATA_WIDTH*LENGTH-1:0]      data_stored_packed;
@@ -47,8 +47,9 @@ module list #(
     reg [LENGTH_WIDTH-1:0]           cur_ptr;
     reg [2:0]                        current_state;
     reg                              found;
-    reg                              last_key_done; 
-    wire                             op_is_insert; 
+    reg                              last_key_done;
+    reg [DATA_WIDTH-1:0]              search_value;
+    wire                             op_is_insert;
     wire                             op_is_read;
     wire                             op_is_delete;
     wire                             op_is_find_all_index;
@@ -67,9 +68,15 @@ module list #(
     wire                               sort_done;
     wire                               sort_in_progress;
     reg [DATA_WIDTH-1:0]  data_sorted [LENGTH-1:0];
-  
+
     integer i;
-    
+
+    generate
+        if (DATA_WIDTH < 1 || LENGTH < 1 || SUM_METHOD < 0 || SUM_METHOD > 2) begin : gen_invalid
+            initial $fatal(1, "Invalid list parameters");
+        end
+    endgenerate
+
     assign op_is_read           = (op_sel == 3'b000) & op_en;
     assign op_is_insert         = (op_sel == 3'b001) & op_en;
     assign op_is_find_all_index = (op_sel == 3'b010) & op_en;
@@ -77,33 +84,33 @@ module list #(
     assign op_is_sum            = (op_sel == 3'b100) & op_en;
     assign op_is_sort_asc       = (op_sel == 3'b101) & op_en;
     assign op_is_sort_des       = (op_sel == 3'b110) & op_en;
-    assign op_is_delete         = (op_sel == 3'b111) & op_en; 
-    
+    assign op_is_delete         = (op_sel == 3'b111) & op_en;
+
     // icarus does not support streaming packing, so we need to do it manually
     // always @ (*) begin
     //     data_stored_packed = {>> DATA_WIDTH {data_stored}};
-    // end 
+    // end
     always @(*) begin
         for (i = 0; i < LENGTH; i = i + 1) begin
             data_stored_packed[i*DATA_WIDTH +: DATA_WIDTH] = data_stored[i];
         end
     end
     // icarus does not support streaming packing, so we need to do it manually
-    
-    
+
+
     assign len = data_count;
 
-     adder #(.DATA_WIDTH(DATA_WIDTH), 
+     adder #(.DATA_WIDTH(DATA_WIDTH),
              .LENGTH(LENGTH),
              .SUM_METHOD(SUM_METHOD))
      u_adder (.clk(clk),
               .rst(rst),
-              .data_in(data_stored_packed), 
+              .data_in(data_stored_packed),
               .sum_en(sum_en),
               .sum_result(sum_result),
               .sum_done(sum_done),
               .sum_in_progress(sum_in_progress));
-              
+
     sorter #(.DATA_WIDTH(DATA_WIDTH),
              .LENGTH(LENGTH))
     u_sorter (.clk(clk),
@@ -111,26 +118,29 @@ module list #(
             .data_in(data_stored_packed),
             .len(data_count),
             .sort_en(sort_en),
-            .sort_order(sort_order), 
+            .sort_order(sort_order),
             .sort_done(sort_done),
             .sort_in_progress(sort_in_progress),
             .data_sorted(data_sorted_packed));
-    
+
     // icarus does not support streaming unpacking, so we need to do it manually
     // always @ (*) begin
     //     data_sorted_unpacked = { >> DATA_WIDTH {data_sorted_packed}};
-    // end 
+    // end
     always @(*) begin
         for (i = 0; i < LENGTH; i = i + 1) begin
             data_sorted_unpacked[i] = data_sorted_packed[i*DATA_WIDTH +: DATA_WIDTH];
         end
     end
     // icarus does not support streaming unpacking, so we need to do it manually
-    
+
     always @ (posedge clk, posedge rst) begin
        if(rst) begin
           current_state <= IDLE;
           sum_en <= 1'b0;
+          sort_en <= 1'b0;
+          sort_order <= 1'b0;
+          search_value <= 0;
           op_done <= 1'b0;
           op_in_progress <= 1'b0;
           op_error <= 1'b0;
@@ -140,10 +150,10 @@ module list #(
           data_count <= {(LENGTH_WIDTH){1'b0}};
           last_key_done <= 1'b0;
           for(i = 0; i < LENGTH; i++) begin
-            data_stored[i] <= {(DATA_WIDTH){1'b0}};    
-          end 
+            data_stored[i] <= {(DATA_WIDTH){1'b0}};
+          end
        end else begin
-          case(current_state) 
+          case(current_state)
             IDLE: begin
                 if(op_is_insert) begin
                     if(data_count >= LENGTH) begin
@@ -151,7 +161,7 @@ module list #(
                         op_done <= 1'b1;
                         op_error <= 1'b1;
                     end else if (index_in >= data_count) begin
-                        current_state <= ACCESS_DONE; 
+                        current_state <= ACCESS_DONE;
                         data_stored[data_count] <= data_in; //insert data at the end
                         data_count <= data_count + 1; //increment data count
                         op_done <= 1'b1;
@@ -198,13 +208,19 @@ module list #(
                         op_in_progress <= 1'b1;
                         sum_en <= 1'b1;
                     end
-                end else if (op_is_find_1st_index) begin               
-                    current_state <= SEARCH_1ST;
-                    op_in_progress <= 1'b1;
+                end else if (op_is_find_1st_index) begin
+                    current_state <= (data_count == 0) ? ACCESS_DONE : SEARCH_1ST;
+                    op_in_progress <= (data_count != 0);
+                    op_done <= (data_count == 0);
+                    op_error <= (data_count == 0);
+                    search_value <= data_in;
                     cur_ptr <= 'd0;
-                end else if (op_is_find_all_index) begin               
-                    current_state <= SEARCH_ALL;
-                    op_in_progress <= 1'b1;
+                end else if (op_is_find_all_index) begin
+                    current_state <= (data_count == 0) ? ACCESS_DONE : SEARCH_ALL;
+                    op_in_progress <= (data_count != 0);
+                    op_done <= (data_count == 0);
+                    op_error <= (data_count == 0);
+                    search_value <= data_in;
                     cur_ptr <= 'd0;
                     last_key_done <= 1'b0;
                     found <= 1'b0;
@@ -218,7 +234,7 @@ module list #(
                     op_in_progress <= 1'b1;
                     sort_en <= 1'b1;
                     sort_order <= 1'b1;
-                end else if (op_is_delete) begin    
+                end else if (op_is_delete) begin
                     if (index_in >= data_count) begin
                         current_state <= ACCESS_DONE; //index_in is out of range
                         op_done <= 1'b1;
@@ -230,11 +246,11 @@ module list #(
                                 data_stored[i] <= 0; //delete data at index_in
                             end else if(i >= index_in & (i+1) <= (LENGTH-1)) begin
                                 data_stored[i] <= data_stored[i+1]; //shift left
-                            end 
+                            end
                         end
                         // yosys will report an error for indexing when i+1 = LENGTH-1 for data_stored[i+1] (although it will not be executed in this case, even with proper if condition)
                         // so we need to handle the case when i+1 = LENGTH-1 separately
-                        data_stored[LENGTH-1] <= 'd0; //always clear the last element 
+                        data_stored[LENGTH-1] <= 'd0; //always clear the last element
                         data_count <= data_count - 1; //decrement data count
                         op_done <= 1'b1;
                         op_error <= 1'b0;
@@ -255,7 +271,7 @@ module list #(
                 end
             end
           SEARCH_1ST: begin
-                    if(data_stored[cur_ptr] == data_in) begin
+                    if(data_stored[cur_ptr] == search_value) begin
                         current_state <= ACCESS_DONE;
                         data_out <= {{DATA_WIDTH{1'b0}},cur_ptr};
                         op_done <= 1'b1;
@@ -275,9 +291,9 @@ module list #(
                             current_state <= ACCESS_DONE;
                             op_done <= 1'b1;
                             op_in_progress <= 1'b0;
-                            op_error <= found;
+                            op_error <= !found;
                         end else begin // else if(cur_ptr <= (data_count-1)) begin
-                            if(data_stored[cur_ptr] == data_in) begin
+                            if(data_stored[cur_ptr] == search_value) begin
                                 data_out <= {{DATA_WIDTH{1'b0}},cur_ptr};
                                 op_done <= 1'b1;
                                 op_error <= 1'b0;
@@ -289,7 +305,7 @@ module list #(
                                 cur_ptr <= cur_ptr + 'b1;
                                 last_key_done <= (cur_ptr == (data_count-1));
                             end
-                        end 
+                        end
           end
           SORT: if(sort_done) begin
                    current_state <= ACCESS_DONE;
@@ -301,7 +317,7 @@ module list #(
                    op_in_progress <= 1'b0;
                    op_error <= 1'b0;
                    sort_en <= 1'b0;
-               end 
+               end
           SUM: if(sum_done) begin
                    current_state <= ACCESS_DONE;
                    data_out <= sum_result;
@@ -309,8 +325,8 @@ module list #(
                    op_in_progress <= 1'b0;
                    op_error <= 1'b0;
                    sum_en <= 1'b0;
-               end 
-          ACCESS_DONE: begin 
+               end
+          ACCESS_DONE: begin
                        current_state <= IDLE;
                        op_done <= 1'b0;
                        op_error <= 1'b0;
@@ -320,6 +336,6 @@ module list #(
                    current_state <= IDLE;
           end
           endcase
-       end       
-    end 
+       end
+    end
 endmodule
