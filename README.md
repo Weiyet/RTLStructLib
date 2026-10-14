@@ -36,7 +36,7 @@ By using these pre-built RTL modules, engineers can accelerate development, redu
 - Doubly Linked List – Bi-directional traversal support <br>
 - Table - Indexed storage mechanism, similar to a register file, enabling rapid direct access and simultaneous read write access to data without hashing. <br>
 - List - Support sorting, find_index, delete, insert operations <br>
-- Circular Linked List （WIP） 
+- Circular Linked List - Bidirectional circular traversal, address/index operations, and bounded value search. <br>
 - Hash Table – Optimized for high-speed lookups, currently only supports modulus hashing and simple multi-staged chaining to handle collision <br>
 - Dual Edge Flip Flop - Double input and output rate structure which can latch data on both rising and falling edge <br> 
 - Systolic Array - Parameterized matrix multiplication with weight-stationary PEs, tiled reduction, and output backpressure. <br>
