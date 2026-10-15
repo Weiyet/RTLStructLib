@@ -95,6 +95,14 @@ gtkwave <waveform.vcd>
 5️⃣ Integrate to your project
 Include file list <Data structure>/src/rtl_list.f to your simulation or project.
 
+### Repository Regression
+
+From Linux/WSL, run `make check` for the default real-RTL benches or `make ci`
+for the complete verified regressions, synthesis and mapped-netlist checks.
+Select blocks with `MODULES="systolic list circular singly doubly"`.
+The current CI scope covers these five modules; see the
+[verification guide](Utils/ci/README.md) for dependencies, check counts and reports.
+
 ### Work in Progress/Future Works 🚀
 🔹 Implementing Hash Binary Tree, AVL Tree and more and more <br>
 🔹 Improving performance & adding more use cases <br>

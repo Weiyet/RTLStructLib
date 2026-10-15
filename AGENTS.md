@@ -8,7 +8,7 @@ RTLStructLib contains parameterized, synthesizable SystemVerilog data structures
 - `tb/sv/` and `tb/cocotb/`: standalone SystemVerilog and Python testbenches.
 - `vip/uvm/` and `vip/pyuvm/`: verification components, sequences, scoreboards, and tests where available. Some VIP is still under development.
 - `FIFO/vip/cpp/`: Verilator C++ testbench.
-- `Utils/tb/`: reusable Makefile templates; `assets/`: documentation images.
+- `Utils/tb/`: shared benches and result checks; `Utils/ci/`: regression runner; `assets/`: documentation images.
 
 Read the affected block's `README.md` for interfaces, parameters, and timing behavior.
 
@@ -16,13 +16,15 @@ Read the affected block's `README.md` for interfaces, parameters, and timing beh
 
 Use a Linux/WSL environment with GNU Make and shell utilities. Install Icarus Verilog for simulation, Yosys for synthesis, and GTKWave for waveform inspection; Python benches require `cocotb`, with `cocotb-bus` or `pyuvm` as applicable.
 
-- `make -C FIFO/tb/sv sim SEED=123`: compile and simulate the FIFO with a reproducible seed.
-- `make -C FIFO/tb/sv synth`: generate a Xilinx-targeted netlist with Yosys.
+- `make check`: default SV/cocotb checks for Systolic, List, and three Linked Lists.
+- `make ci MODULES="singly doubly"`: full regressions, synthesis, and supported netlist checks; omit `MODULES` for all five blocks.
+- `make test-tools`: check runner failure handling. See `Utils/ci/README.md` for setup and reports.
+- `make -C FIFO/tb/sv sim SEED=123`: compile and simulate the FIFO.
 - `make -C FIFO/tb/cocotb`: run standalone cocotb tests.
 - `make -C FIFO/vip/pyuvm`: run the Python UVM bench.
 - `make -C FIFO/vip/cpp run`: build and run the C++17 bench with Verilator.
 
-Replace `FIFO` with the affected block where supported. Run `make clean` in the bench directory after changing DUT parameters.
+Replace `FIFO` where supported. Clean bench builds after changing parameters.
 
 ## Coding Style & Naming Conventions
 

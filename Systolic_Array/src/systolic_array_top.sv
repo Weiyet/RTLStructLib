@@ -55,13 +55,11 @@ module systolic_array_top #(
         sa_weight = 0;
         if (state == LOAD_TILE && tile_base + tile_row < K_DIM)
             sa_weight = weights[tile_base + tile_row];
-        if (state == RUN_TILE) begin
-            for (lane = 0; lane < ARRAY_ROWS; lane = lane + 1) begin
-                if (run_count >= lane && run_count < lane + ARRAY_ROWS &&
-                    tile_base + lane < K_DIM)
-                    sa_act[lane*DATA_WIDTH +: DATA_WIDTH] =
-                        activations[run_count-lane][tile_base+lane];
-            end
+        for (lane = 0; lane < ARRAY_ROWS; lane = lane + 1) begin
+            if (state == RUN_TILE && run_count >= lane &&
+                run_count < lane + ARRAY_ROWS && tile_base + lane < K_DIM)
+                sa_act[lane*DATA_WIDTH +: DATA_WIDTH] =
+                    activations[run_count-lane][tile_base+lane];
         end
     end
 

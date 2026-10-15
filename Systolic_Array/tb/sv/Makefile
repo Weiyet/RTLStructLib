@@ -3,6 +3,10 @@ SHELL := /bin/bash
 .PHONY: sim gen_sim synth netlist_sim gen_netlist_sim clean
 
 DUT = systolic_array
+SYNTH_LOG ?= synth.log
+NETLIST ?= $(DUT).netlist.v
+SYNTH_PARAMETERS = ARRAY_ROWS ARRAY_COLS K_DIM DATA_WIDTH WEIGHT_WIDTH ACC_WIDTH SIGNED_MATH INPUT_SKEW
+SYNTH_ARGS = $(foreach param,$(SYNTH_PARAMETERS),-set $(param) $($(param)))
 SIM_OPTS ?= ../../src/pe.sv ../../src/systolic_array.sv ../../src/systolic_array_top.sv
 SEED ?= 1
 TEST ?= all
@@ -33,7 +37,8 @@ gen_sim: tb.sv ${SIM_OPTS}
 	iverilog -g2012 -s tb $(PARAM_ARGS) $(COMPILE_ARGS) -o $(SIM_BUILD)/$(DUT).sim $^
 
 synth: ${SIM_OPTS}
-	yosys -p 'read_verilog -sv $(SIM_OPTS); synth_xilinx -top systolic_array_top; check -assert; select -assert-none t:$$dlatch t:$$adlatch' -L synth.log -o $(DUT).netlist.v
+	mkdir -p $(SIM_BUILD)
+	yosys -q -p 'read_verilog -sv $(SIM_OPTS); chparam $(SYNTH_ARGS) systolic_array_top; hierarchy -top systolic_array_top; proc; check -assert; select -assert-none t:$$dlatch t:$$adlatch; synth_xilinx -top systolic_array_top; check -assert; select -assert-none t:LDCE t:LDPE' -L $(SYNTH_LOG) -o $(NETLIST)
 
 netlist_sim: gen_netlist_sim
 	./${DUT}.netlist.sim +VCDFILE=netlist_sim.vcd +VCDLEVEL=0 +SEED=${SEED} | tee netlist_sim.log

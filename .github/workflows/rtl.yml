@@ -1,0 +1,43 @@
+name: RTL verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: ${{ matrix.module }} RTL and synthesis
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [systolic, list, circular, singly, doubly]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install simulation and synthesis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y iverilog yosys python3.10-venv
+          python3.10 -m venv .venv
+          .venv/bin/python -m pip install -r Utils/ci/requirements.txt
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+      - name: Verify runner failure handling
+        run: make test-tools
+      - name: Run real RTL, checker, synthesis and netlist checks
+        run: make ci MODULES=${{ matrix.module }}
+      - name: Retain verification reports and hardware artifacts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rtl-${{ matrix.module }}
+          path: sim_build/verification/
+          if-no-files-found: warn
+          retention-days: 7

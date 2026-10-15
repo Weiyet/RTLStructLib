@@ -8,3 +8,4 @@ __pycache__
 iverilog_dump.v
 results.xml
 sim_build
+.venv/

@@ -25,7 +25,7 @@ gen_sim: tb.sv $(SIM_OPTS)
 
 synth: $(SIM_OPTS)
 	mkdir -p $(SIM_BUILD)
-	yosys -q -p 'read_verilog -sv $(SIM_OPTS); chparam -set DATA_WIDTH $(DATA_WIDTH) -set MAX_NODE $(MAX_NODE) circular_linked_list; synth_xilinx -top circular_linked_list; check -assert; select -assert-none t:$$dlatch t:$$adlatch' -L $(SIM_BUILD)/synth.log -o $(SIM_BUILD)/$(DUT).netlist.v
+	yosys -q -p 'read_verilog -sv $(SIM_OPTS); chparam -set DATA_WIDTH $(DATA_WIDTH) -set MAX_NODE $(MAX_NODE) circular_linked_list; hierarchy -top circular_linked_list; proc; check -assert; select -assert-none t:$$dlatch t:$$adlatch; synth_xilinx -top circular_linked_list; check -assert; select -assert-none t:LDCE t:LDPE' -L $(SIM_BUILD)/synth.log -o $(SIM_BUILD)/$(DUT).netlist.v
 
 clean:
 	rm -f $(SIM_BUILD)/$(DUT).sim $(SIM_BUILD)/sim.log $(SIM_BUILD)/sim.vcd

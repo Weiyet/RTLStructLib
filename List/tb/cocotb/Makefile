@@ -27,6 +27,6 @@ include $(shell cocotb-config --makefiles)/Makefile.sim
 
 .PHONY: check
 check: sim
-	python3 ../../../Systolic_Array/tb/support/check_results.py $(COCOTB_RESULTS_FILE)
+	python3 ../../../Utils/tb/check_results.py $(COCOTB_RESULTS_FILE)
 
 
