@@ -1,147 +1,81 @@
 # Singly Linked List
 
-A configurable hardware implementation of a singly linked list data structure in Verilog. The module supports basic linked list operations including insertion, deletion, and reading at specific addresses or indices, with full hardware synchronization and status monitoring.
+A synthesizable, single-clock hardware linked list with a fixed node pool and
+next pointers only. Operations run through a bounded FSM; external ports,
+operation codes and deterministic lowest-free-address allocation follow the
+original module interface.
 
-## Features
+## Parameters and Integration
 
-- Configurable data width and maximum node count
-- Multiple insertion and deletion operations
-- Hardware-based node management
-- Status monitoring (full, empty, length)
-- Fault detection
-- Head and tail pointer tracking
-- Synchronous operation with start/done handshaking
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `DATA_WIDTH` | 8 | Positive unsigned node-data width |
+| `MAX_NODE` | 8 | Positive pool capacity, including 1 and non-power-of-two values |
 
-## Parameters
+`ADDR_WIDTH = ceil(log2(MAX_NODE+1))`. Valid node addresses are
+`0..MAX_NODE-1`; `NULL = MAX_NODE`. Length uses the same width and can
+represent a full pool. Include `src/rtl_file.f`; the RTL has no external
+module dependency.
 
-| Parameter    | Description                                      | Default |
-|-------------|--------------------------------------------------|---------|
-| DATA_WIDTH  | Width of data stored in each node                | 8       |
-| MAX_NODE    | Maximum number of nodes supported                | 8       |
+| Port | Direction | Meaning |
+|------|-----------|---------|
+| `clk`, `rst` | Input | Rising-edge clock; asynchronous active-high reset |
+| `op[2:0]`, `op_start` | Input | Operation code and one-clock request |
+| `data_in`, `addr_in` | Input | Insert/search value and physical address or logical index |
+| `op_done`, `fault` | Output | One-clock completion and its error status |
+| `data_out` | Output | Data from the last successful read |
+| `next_node_addr` | Output | Next occupied node's address; NULL at tail |
+| `length`, `head`, `tail` | Output | Occupied count and endpoint addresses |
+| `full`, `empty` | Output | Pool status |
 
-## Interface Signals
+## Operations and Handshake
 
-| Signal           | Direction | Width         | Description                                    |
-|-----------------|-----------|---------------|------------------------------------------------|
-| clk             | Input     | 1            | System clock                                   |
-| rst             | Input     | 1            | Active high reset                              |
-| data_in         | Input     | DATA_WIDTH   | Input data for insertion                      |
-| addr_in         | Input     | ADDR_WIDTH   | Target address/index for operations           |
-| op              | Input     | 3            | Operation code                                |
-| op_start        | Input     | 1            | Start signal for operation                    |
-| op_done         | Output    | 1            | Operation completion signal                   |
-| data_out        | Output    | DATA_WIDTH   | Output data from read operations             |
-| next_node_addr  | Output    | ADDR_WIDTH   | Address of next node in list                 |
-| length          | Output    | ADDR_WIDTH   | Current number of nodes in list              |
-| head            | Output    | ADDR_WIDTH   | Address of first node                        |
-| tail            | Output    | ADDR_WIDTH   | Address of last node                         |
-| full            | Output    | 1            | List full indicator                          |
-| empty           | Output    | 1            | List empty indicator                         |
-| fault           | Output    | 1            | Error indicator                              |
+| Code | Operation |
+|------|-----------|
+| 0 | Read an occupied physical address |
+| 1 | Insert before an occupied address; addresses at/above NULL append |
+| 2 | Delete the first matching value from head |
+| 3 | Delete an occupied physical address |
+| 5 | Insert before an index; indices at/above length append |
+| 7 | Delete a valid zero-based index |
 
-## Supported Operations
+Codes 4/6, absent values, invalid read/delete targets, vacant address-insertion
+targets and full insertions fault without changing the list.
+For an empty list, use index insertion or a NULL address append.
 
-| Op Code | Operation           | Description                                             |
-|---------|--------------------|---------------------------------------------------------|
-| 0       | Read_Addr          | Read data at specified address                          |
-| 1       | Insert_At_Addr     | Insert new node at specified address                    |
-| 2       | Delete_Value       | Delete first occurrence of specified value              |
-| 3       | Delete_At_Addr     | Delete node at specified address                        |
-| 5       | Insert_At_Index    | Insert new node at specified index                      |
-| 7       | Delete_At_Index    | Delete node at specified index                          |
+Pulse `op_start` with stable command inputs, then wait for `op_done`.
+Inputs are latched; requests during execution/completion are ignored.
+Allow completion to clear before issuing another request. Holding the original
+request until completion is also supported. Read outputs hold across
+non-read operations and failed reads.
 
-## State Machine
+Reset clears data, validity, length and pending work; endpoint and pointer
+outputs become NULL. An empty list has `head = tail = NULL`; a singleton's
+neighbour pointer(s) are NULL. Reset asserts `empty` and clears `full`.
+Links, length and endpoints update atomically with completion.
 
-The module implements a state machine with the following states:
+## Hardware Architecture and Verification
 
-1. **IDLE (3'b000)**
-   - Waits for operation start
-   - Validates operation parameters
-   - Initializes operation sequence
+SLL stores no backward-pointer array. A predecessor register is maintained
+during one-node-per-clock walks for indexed/address mutations and value
+deletion; reads and appends use constant-cycle paths.
+Storage uses resettable register arrays; the tested synthesis flow maps them
+to flip-flops and multiplexers.
 
-2. **FIND_ADDR (3'b001)**
-   - Traverses list to find target address
-   - Used for address-based operations
-
-3. **FIND_VALUE (3'b010)**
-   - Traverses list to find target value
-   - Used for value-based deletion
-
-4. **INSERT_STG1 (3'b011)**
-   - First stage of node insertion
-   - Updates node links
-
-5. **EXECUTE (3'b100)**
-   - Completes operation
-   - Updates status signals
-
-6. **FAULT (3'b101)**
-   - Handles error conditions
-
-## Usage Example
-
-```verilog
-// Instantiate a linked list with 16 nodes and 32-bit data
-singly_linked_list #(
-    .DATA_WIDTH(32),
-    .MAX_NODE(16)
-) list_inst (
-    .clk(system_clock),
-    .rst(reset),
-    .data_in(input_data),
-    .addr_in(target_addr),
-    .op(operation_code),
-    .op_start(start_signal),
-    .op_done(done_signal),
-    .data_out(output_data),
-    .next_node_addr(next_addr),
-    .length(list_length),
-    .head(head_addr),
-    .tail(tail_addr),
-    .full(list_full),
-    .empty(list_empty),
-    .fault(error_signal)
-);
+```bash
+make -C Singly_Linked_List/tb/sv sim SEED=123
+make -C Singly_Linked_List/tb/cocotb SEED=123
+make -C Singly_Linked_List/tb/sv netlist_sim SEED=123
+python3 Utils/tb/linked_list/regress_rtl.py --module singly
 ```
 
-## Operation Protocol
+Use Linux/WSL with Make, Bash, Icarus Verilog, Python, cocotb and Yosys.
+Standalone wrappers reuse the independent models in
+[`Utils/tb/linked_list/`](../Utils/tb/linked_list/README.md), which documents
+cycle bounds, parameter overrides, mapped-netlist simulation, regression
+coverage and recorded results. VIP suites are separate from this runner.
 
-1. Set `data_in` and/or `addr_in` as required by operation
-2. Set `op` to desired operation code
-3. Assert `op_start` for one clock cycle
-4. Wait for `op_done` assertion
-5. Check `fault` signal for operation status
-6. Read `data_out` if applicable
-
-## Reset Behavior
-
-On assertion of reset:
-- All nodes are invalidated
-- Head and tail pointers set to NULL
-- Length cleared to zero
-- All node data cleared
-- All status signals deasserted
-
-## Implementation Notes
-
-1. **Memory Organization**:
-   - Next node pointers stored separately
-   - Valid bits for node tracking
-
-2. **Address Handling**:
-   - NULL address = MAX_NODE
-   - Valid addresses: 0 to (MAX_NODE-1)
-
-3. **Error Conditions**:
-   - List full during insertion
-   - List empty during deletion/read
-   - Invalid address/index
-   - Address overflow
-
-## Limitations
-
-- Fixed maximum size defined by MAX_NODE
-- Sequential search for operations
-- Single operation at a time
-- No concurrent access support
-- User could actually use distributed RAM to stored data if necessary 
+Validated on 2026-10-15: all ten default cocotb scenarios and 2,801 SV
+transactions pass, including the same transactions on the mapped netlist.
+The shared regression records 31 real-RTL runs, four synthesis configurations
+and three mapped-netlist configurations for this module.
