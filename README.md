@@ -10,7 +10,7 @@
 ![Verilog](https://img.shields.io/badge/Verilog-IEEE_1364--2005-blue)
 ![SystemVerilog](https://img.shields.io/badge/SystemVerilog-IEEE_1800--2017-blue)
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![Version](https://img.shields.io/badge/Version-v1.1                            -green)
+![Version](https://img.shields.io/badge/Version-v1.2-green)
 ![Status](https://img.shields.io/badge/Status-In_Development-yellow)
   
 </div>
