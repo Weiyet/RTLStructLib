@@ -13,7 +13,7 @@ class FifoVipConfig(uvm_object):
     def __init__(self, name="fifo_vip_config"):
         super().__init__(name)
         # DUT parameters - CHANGE THESE FOR YOUR FIFO
-        self.DEPTH = 12
+        self.DEPTH = 16
         self.DATA_WIDTH = 8
         self.ASYNC = 1  # 1=async clocks, 0=sync
         self.RD_BUFFER = 1  # 1=buffered read, 0=combinational

@@ -45,7 +45,7 @@ from common.fifo_vip_config import FifoVipConfig
 
 # Create config
 cfg = FifoVipConfig("cfg")
-cfg.DEPTH = 12
+cfg.DEPTH = 16
 cfg.DATA_WIDTH = 8
 cfg.ASYNC = 1
 cfg.RD_BUFFER = 1
@@ -117,7 +117,7 @@ make clean
 
 Parameters are configured in `Makefile`:
 ```makefile
-COMPILE_ARGS = -Pfifo.DEPTH=12
+COMPILE_ARGS = -Pfifo.DEPTH=16
 COMPILE_ARGS += -Pfifo.DATA_WIDTH=8
 COMPILE_ARGS += -Pfifo.ASYNC=1
 COMPILE_ARGS += -Pfifo.RD_BUFFER=1

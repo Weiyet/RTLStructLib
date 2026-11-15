@@ -1,229 +1,174 @@
+"""Independent queue scoreboard with unrelated clocks and CDC invariants."""
+from collections import deque
+import os
 import random
-#import asyncio
+
 import cocotb
-from cocotb.triggers import Timer, RisingEdge
-from cocotb.clock import Clock
-from cocotb.result import TestFailure
-
-DEPTH = 12 # DUT parameter
-DATA_WIDTH = 8 # DUT paramter
-ASYNC = 1 # DUT parameter
-RD_BUFFER = 1 # DUT parameter
-TEST_WEIGHT = 1 # TB multiplier for stimulus injected
-WR_CLK_PERIOD = 20 # TB wr_clk generator
-RD_CLK_PERIOD = 32 # TB rd_clk generator
-#SIM_TIMEOUT = 100000; // TB simulation time out
-BURST_LENGHT = DEPTH
-MAX_DATA = 2**DATA_WIDTH - 1
-err_cnt = 0
-
-# fifo #(
-# .DEPTH(DEPTH), 
-# .DATA_WIDTH(DATA_WIDTH), 
-# .ASYNC(ASYNC),
-# .RD_BUFFER(RD_BUFFER)) DUT (
-    # /*input wire*/ .rd_clk(rd_clk),
-    # /*input wire*/ .wr_clk(wr_clk),
-    # /*input wire*/ .rst(rst),
-    # /*input wire [DATA_WIDTH-1:0]*/ .data_wr(data_wr),
-    # /*input wire*/ .wr_en(wr_en),
-    # /*output wire*/ .fifo_full(fifo_full),
-    # /*output logic [DATA_WIDTH-1:0]*/ .data_rd(data_rd),
-    # /*input wire*/ .rd_en(rd_en),
-    # /*output wire*/ .fifo_empty(fifo_empty));
-
-async def dut_init(dut):
-    global DEPTH 
-    global DATA_WIDTH
-    global ASYNC 
-    global RD_BUFFER
-    global MAX_DATA
-    global BURST_LENGHT
-    DEPTH = dut.DEPTH.value 
-    DATA_WIDTH = dut.DATA_WIDTH.value
-    ASYNC = dut.ASYNC.value
-    RD_BUFFER = dut.RD_BUFFER.value
-    MAX_DATA = 2**DATA_WIDTH - 1
-    BURST_LENGHT = DEPTH
-    await cocotb.start(Clock(dut.wr_clk, WR_CLK_PERIOD, units="ns").start())
-    await cocotb.start(Clock(dut.rd_clk, RD_CLK_PERIOD, units="ns").start())
-    dut.rst.value = 1
-    await(Timer(1000,'ns'))
-    dut.rst.value = 0
-    await(Timer(1000,'ns'))
-
-async def fifo_write_burst_rand(count,dut,fifo_expected):
-    global err_cnt
-    for i in range(count):
-        await RisingEdge(dut.wr_clk)
-        await(Timer(1,'ns'))
-        if(len(fifo_expected) < DEPTH and dut.fifo_full.value == 1):
-            dut._log.error("FIFO is not full but fifo_full flag is asserted")
-        dut.wr_en.value = 1
-        data_wr_rand = random.randint(0,MAX_DATA)
-        dut.data_wr.value = data_wr_rand
-        if(len(fifo_expected) < DEPTH):
-            fifo_expected.append(data_wr_rand)
-            dut._log.info("Data written = %d, FIFO entry = %d", data_wr_rand, len(fifo_expected))
-        else:
-            await(Timer(1,'ns'))
-            if(dut.fifo_full.value == 1):
-                dut._log.info("FIFO is full, fifo_full flag is asserted correctly")
-            else:
-                dut._log.error("FIFO is full but fifo_full flag is not asserted")
-                err_cnt += 1
-    await RisingEdge(dut.wr_clk)
-    await(Timer(1,'ns'))
-    dut.wr_en.value = 0
+from cocotb.triggers import Timer
 
 
-async def fifo_read_burst(count,dut,fifo_expected):
-    global err_cnt
-    rd_init = 0
-    await RisingEdge(dut.rd_clk)
-    await Timer(1,'ns')
-    dut.rd_en.value = 1
-    if(RD_BUFFER == 0):
-        await Timer(1,'ns')
-        if(len(fifo_expected)>0):
-            if(dut.fifo_empty.value == 1):
-                dut._log.error("FIFO is not empty but fifo_empty flag is asserted")
-                err_cnt += 1
-            data_rd_exp = fifo_expected.pop(0)
-            data_rd_act = dut.data_rd.value.integer
-            if(data_rd_exp == data_rd_act):
-                dut._log.info("Data read = %d, FIFO entry = %d", data_rd_act, len(fifo_expected))
-            else:
-                dut._log.error("Data read mismatch, ACT = %d, EXP = %d", data_rd_act, data_rd_exp)
-                err_cnt += 1
-        else:
-            if(dut.fifo_empty.value == 1):
-                dut._log.info("FIFO is empty, fifo_empty flag is asserted correctly")
-            else:
-                dut._log.error("FIFO is empty but fifo_empty flag is not asserted")
-                err_cnt += 1
-    for i in range(count):
-        await RisingEdge(dut.rd_clk)
-        await Timer(1,'ns')
-        if(len(fifo_expected)>0):
-            if(dut.fifo_empty.value == 1):
-                if(len(fifo_expected) == 1):
-                    dut._log.info("FIFO is empty, fifo_empty flag is asserted correctly")
-                else:
-                    dut._log.error("FIFO is not empty but fifo_empty flag is asserted")
-                    err_cnt += 1
-            data_rd_exp = fifo_expected.pop(0)
-            data_rd_act = dut.data_rd.value.integer
-            if(data_rd_exp == data_rd_act):
-                dut._log.info("Data read = %d, FIFO entry = %d", data_rd_act, len(fifo_expected))
-            else:
-                dut._log.error("Data read mismatch, ACT = %d, EXP = %d", data_rd_act, data_rd_exp)
-                err_cnt += 1
-        else:
-            if(dut.fifo_empty.value == 1):
-                dut._log.info("FIFO is empty, fifo_empty flag is asserted correctly")
-            else:
-                dut._log.error("FIFO is empty but fifo_empty flag is not asserted")
-                err_cnt += 1
-    dut.rd_en.value = 0
+class Queue:
+    def __init__(self, dut):
+        self.dut = dut
+        self.depth = int(dut.DEPTH.value)
+        self.async_mode = int(dut.ASYNC.value)
+        self.buffered = int(dut.RD_BUFFER.value)
+        self.width = len(dut.data_wr)
+        self.wr_half = int(os.getenv("WR_HALF", "3"))
+        self.rd_half = int(os.getenv("RD_HALF", "5"))
+        self.queue = deque()
+        self.output = 0
+        self.phase = 0
+        self.ticks = 0
+        self.limit = int(os.getenv("TB_TIMEOUT_CYCLES", "100000"))
+        self.random = random.Random(int(os.getenv("TB_SEED", "123")))
+        self.pushes = self.pops = 0
 
-async def fifo_burst_write(dut,fifo_wr_stream,fifo_expected):
-    for data_wr in fifo_wr_stream:
-        await RisingEdge(dut.wr_clk)
-        await Timer(1,'ns')
-        dut.wr_en.value = 1
-        dut.data_wr.value = data_wr
-        fifo_expected.append(data_wr)
-        dut._log.info("Data written = %d, FIFO entry = %d", data_wr, len(fifo_expected))
-    await RisingEdge(dut.wr_clk)
-    await Timer(1,'ns')
-    dut.wr_en.value = 0
+    async def tick(self, write=0, read=0, value=None, stop_wr=False, stop_rd=False):
+        self.ticks += 1
+        assert self.ticks <= self.limit, "FIFO timed out"
+        if value is None:
+            value = self.random.getrandbits(self.width)
+        self.dut.wr_en.value = write
+        self.dut.rd_en.value = read
+        self.dut.data_wr.value = value
+        await Timer(2, units="ns")
+        next_wr = 0 if stop_wr else ((self.phase // self.wr_half) % 2)
+        next_rd = 0 if stop_rd else ((self.phase // self.rd_half) % 2)
+        if not self.async_mode:
+            next_rd = next_wr
+        wr_edge = next_wr and not int(self.dut.wr_clk.value)
+        rd_edge = next_rd and not int(self.dut.rd_clk.value)
+        push = wr_edge and write and not int(self.dut.fifo_full.value)
+        pop = rd_edge and read and not int(self.dut.fifo_empty.value)
+        if not self.buffered:
+            readable = read and not int(self.dut.fifo_empty.value)
+            assert not readable or self.queue, "empty queue advertised readable"
+            assert int(self.dut.data_rd.value) == (self.queue[0] if readable else 0)
+        if pop:
+            assert self.queue, "underflow accepted"
+            self.output = self.queue.popleft()
+            self.pops += 1
+        if push:
+            assert len(self.queue) < self.depth, "overflow accepted"
+            self.queue.append(value)
+            self.pushes += 1
+        if self.async_mode:
+            block = self.dut.async_fifo
+            old_gray = [int(block.wr_gray.value), int(block.rd_gray.value)]
+        self.dut.wr_clk.value = next_wr
+        self.dut.rd_clk.value = next_rd
+        self.phase += 1
+        await Timer(2, units="ns")
+        if self.buffered:
+            assert int(self.dut.data_rd.value) == self.output
+        if self.async_mode:
+            for old, signal in zip(old_gray, (block.wr_gray, block.rd_gray)):
+                difference = old ^ int(signal.value)
+                assert (difference & (difference - 1)) == 0, "source Gray pointer changed multiple bits"
+        elif int(self.dut.wr_ready.value):
+            assert int(self.dut.fifo_empty.value) == (not self.queue)
+            assert int(self.dut.fifo_full.value) == (len(self.queue) == self.depth)
 
-async def fifo_burst_read_return_stream(dut,count,fifo_expected):
-    fifo_rd_stream = []
-    rd_init = 0
-    while (rd_init == 0):
-        await RisingEdge(dut.rd_clk)
-        if(dut.fifo_empty.value != 1):
-            if(rd_init == 0):
-                await Timer(1,'ns')
-                dut.rd_en.value = 1
-                if(RD_BUFFER == 0):
-                    await Timer(1,'ns')
-                    data_rd = dut.data_rd.value.integer
-                    fifo_rd_stream.append(data_rd)
-                    fifo_expected.pop(0)
-                    dut._log.info("Data read = %d, FIFO entry = %d", data_rd,len(fifo_expected))
-                rd_init = 1
-    while (len(fifo_rd_stream) < count):
-        await RisingEdge(dut.rd_clk)
-        await Timer(1,'ns')    
-        data_rd = dut.data_rd.value.integer
-        fifo_rd_stream.append(data_rd)
-        fifo_expected.pop(0)
-        dut._log.info("Data read = %d, FIFO entry = %d", data_rd,len(fifo_expected))
-    dut.rd_en.value = 0
-    return fifo_rd_stream
+    async def reset(self, warm=True):
+        self.dut.wr_clk.value = 0
+        self.dut.rd_clk.value = 0
+        self.dut.wr_en.value = 0
+        self.dut.rd_en.value = 0
+        self.dut.data_wr.value = 0
+        self.dut.rst.value = 0
+        await Timer(2, units="ns")
+        self.dut.rst.value = 1
+        self.queue.clear()
+        self.output = 0
+        self.phase = 0
+        await Timer(2, units="ns")
+        assert int(self.dut.fifo_empty.value) == 1
+        assert int(self.dut.fifo_full.value) == 1  # backpressure during reset/release
+        assert int(self.dut.data_rd.value) == 0
+        self.dut.rst.value = 0
+        if warm:
+            for _ in range(8 * (self.wr_half + self.rd_half)):
+                await self.tick()
+            assert int(self.dut.fifo_full.value) == 0
+            assert int(self.dut.fifo_empty.value) == 1
 
-async def fifo_read_write_rand_simul(count,dut):
-    global err_cnt
-    fifo_wr_stream = []
-    fifo_rd_stream = []
-    for i in range(BURST_LENGHT):
-        data_wr_rand = random.randint(0,MAX_DATA)
-        fifo_wr_stream.append(data_wr_rand)
-    fifo_expected = []
-    await cocotb.start(fifo_burst_write(dut,fifo_wr_stream,fifo_expected))
-    fifo_rd_stream = await fifo_burst_read_return_stream(dut,BURST_LENGHT,fifo_expected)
-    for i in range(len(fifo_wr_stream)):
-        if(fifo_wr_stream[i] != fifo_rd_stream[i]):
-            dut._log.error("Data rd %d does not match data wr %d", fifo_rd_stream[i],fifo_wr_stream[i])
-            err_cnt += 1
+    async def fill(self):
+        for _ in range((self.depth + 8) * 2 * self.wr_half):
+            await self.tick(write=1)
+        assert len(self.queue) == self.depth
+        assert int(self.dut.fifo_full.value) == 1
 
-@cocotb.test()
-async def fifo_rand_write_then_read_test(dut):
-    await dut_init(dut)
-    dut._log.info("\nFIFO WRITE BURST SEQ")
-    fifo_expected = []
-    await fifo_write_burst_rand(DEPTH+3,dut,fifo_expected)
-    await(Timer(1000,'ns'))
-    dut._log.info("\nFIFO READ BURST SEQ")
-    await fifo_read_burst(DEPTH+3,dut,fifo_expected)
-    await(Timer(1000,'ns'))
-    if (err_cnt > 0):
-        cocotb.log.error("Errors count = %d",err_cnt)
-        cocotb.result.test_fail()
+    async def drain(self):
+        for _ in range((self.depth + 8) * 2 * self.rd_half):
+            await self.tick(read=1)
+        assert not self.queue, "drain lost entries"
+        assert int(self.dut.fifo_empty.value) == 1
 
 
 @cocotb.test()
-async def fifo_rand_read_write_test(dut):
-    await dut_init(dut)
-    dut._log.info("\nFIFO RANDOM READ WRITE SEQ")
-    fifo_expected = []
-    i = DEPTH
-    while(i >= 0):
-        op_sel = random.randint(0,1)
-        op_count = random.randint(1,5)
-        i = i - op_count
-        match (op_sel):
-            case 1:
-                await fifo_read_burst(op_count,dut,fifo_expected)
-                await Timer(RD_CLK_PERIOD,'ns')
-                await Timer(3*WR_CLK_PERIOD,'ns')
-            case 0: 
-                await fifo_write_burst_rand(op_count,dut,fifo_expected)
-                await Timer(WR_CLK_PERIOD,'ns')
-                await Timer(3*RD_CLK_PERIOD,'ns')
-    if (err_cnt > 0):
-        cocotb.log.error("Errors count = %d",err_cnt)
-        cocotb.result.test_fail()    
+async def test_empty_and_invalid(dut):
+    queue = Queue(dut)
+    await queue.reset()
+    await queue.drain()
+    await queue.fill()
+    for _ in range(60):
+        await queue.tick(write=1)
+    await queue.drain()
+
 
 @cocotb.test()
-async def fifo_rand_read_write_simul_test(dut):
-    cocotb.log.info("Seed = %d",cocotb.RANDOM_SEED)
-    await dut_init(dut)
-    dut._log.info("\nFIFO SIMULTANEOUS RANDOM READ WRITE SEQ")
-    await fifo_read_write_rand_simul(1,dut)
-    if (err_cnt > 0):
-        cocotb.log.error("Errors count = %d",err_cnt)
-        cocotb.result.test_fail()
+async def test_full_capacity_and_wrap(dut):
+    queue = Queue(dut)
+    await queue.reset()
+    for _ in range(5):
+        await queue.fill()
+        await queue.drain()
+    assert queue.pushes == queue.pops == 5 * queue.depth
+
+
+@cocotb.test()
+async def test_simultaneous_and_random(dut):
+    queue = Queue(dut)
+    await queue.reset()
+    for _ in range(1800):
+        await queue.tick(1, 1)
+    for _ in range(4000):
+        await queue.tick(queue.random.randrange(2), queue.random.randrange(2))
+    await queue.drain()
+    assert queue.pushes == queue.pops > 0
+
+
+@cocotb.test()
+async def test_reset_and_stopped_clocks(dut):
+    queue = Queue(dut)
+    await queue.reset()
+    await queue.fill()
+    await queue.reset(warm=False)
+    for _ in range(30):
+        await queue.tick(1, 1, stop_wr=True, stop_rd=True)
+    assert not queue.queue
+    if queue.async_mode:
+        for _ in range((queue.depth + 8) * 2 * queue.wr_half):
+            await queue.tick(1, 1, stop_rd=True)
+        assert len(queue.queue) == queue.depth
+        assert int(dut.fifo_empty.value) == 1
+        for _ in range((queue.depth + 8) * 2 * queue.rd_half):
+            await queue.tick(0, 1, stop_wr=True)
+        assert not queue.queue
+    await queue.reset()
+    await queue.fill()
+    await queue.drain()
+
+
+@cocotb.test()
+async def test_data_bits(dut):
+    queue = Queue(dut)
+    await queue.reset()
+    for bit in range(queue.width):
+        value = 1 << bit
+        for _ in range(2 * queue.wr_half):
+            await queue.tick(write=1, value=value)
+        for _ in range(2 * queue.rd_half * 5):
+            await queue.tick(read=1)
+    await queue.drain()

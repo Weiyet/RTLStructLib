@@ -23,7 +23,7 @@ class base_test extends uvm_test;
         
         // Create config - MODIFY FOR YOUR FIFO
         cfg = fifo_vip_config::type_id::create("cfg");
-        cfg.DEPTH = 12;        // Change this
+        cfg.DEPTH = 16;        // Change this
         cfg.DATA_WIDTH = 8;    // Change this
         cfg.ASYNC = 1;         // Change this
         cfg.RD_BUFFER = 1;     // Change this

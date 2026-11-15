@@ -1,261 +1,130 @@
-`timescale 1ns / 1ps
-//////////////////////////////////////////////////////////////////////////////////
-// 
-// Create Date: 05/05/2024 03:37:34 PM
-// Last Update Date: 05/11/2024 10:37:12 AM
-// Module Name: tb
-// Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Description: 1. fifo_write_burst_rand 
-//              2. fifo_read_burst
-//              3. fifo_burst_rand
-//              4. fifo_read_write_rand_simul
-// Additional Comments:
-// 
-//////////////////////////////////////////////////////////////////////////////////
-
-
-module tb(
-);
-parameter DEPTH = 12; // DUT parameter
-parameter DATA_WIDTH = 8; // DUT paramter
-parameter ASYNC = 1; // DUT parameter
-parameter RD_BUFFER = 1; // DUT parameter
-parameter TEST_WEIGHT = 1; // TB multiplier for stimulus injected
-parameter WR_CLK_PERIOD = 20; // TB wr_clk generator
-parameter RD_CLK_PERIOD = 32; // TB rd_clk generator
-parameter SIM_TIMEOUT = 100000; // TB simulation time out
-parameter BURST_LENGHT = DEPTH;
-localparam MAX_DATA = 2**DATA_WIDTH - 1;
-integer fifo_expected [$];
-integer i; 
-integer err_cnt = 0;
-reg rd_clk = 0; 
-reg wr_clk = 0;
-reg rst = 1;
-reg [DATA_WIDTH-1:0] data_wr = 0;
-reg wr_en = 0;
-reg rd_en = 0;
-wire [DATA_WIDTH-1:0] data_rd;
-wire fifo_empty;
-wire fifo_full;
-
-
-`ifdef XILINX_GLS
-    glbl glbl (); // for Xilinx GLS
+`timescale 1ns/1ps
+module tb;
+    parameter DEPTH = 16, DATA_WIDTH = 8, ASYNC = 1, RD_BUFFER = 1;
+    parameter WR_HALF = 3, RD_HALF = 5, TB_TIMEOUT_CYCLES = 100000;
+    reg wr_clk = 0, rd_clk = 0, rst = 0, wr_en = 0, rd_en = 0;
+    reg [DATA_WIDTH-1:0] data_wr = 0;
+    wire [DATA_WIDTH-1:0] data_rd;
+    wire fifo_full, fifo_empty;
+`ifdef FIFO_NETLIST
+    fifo dut (.*);
+`else
+    fifo #(.DEPTH(DEPTH), .DATA_WIDTH(DATA_WIDTH), .ASYNC(ASYNC),
+           .RD_BUFFER(RD_BUFFER)) dut (.*);
 `endif
+    reg [DATA_WIDTH-1:0] expected [0:DEPTH-1];
+    reg [DATA_WIDTH-1:0] expected_output = 0;
+    integer count = 0, ticks = 0, transactions = 0, phase = 0;
+    integer i, j, round_number;
+    reg next_wr, next_rd, push, pop;
+    reg [31:0] random_state;
+    reg [DATA_WIDTH-1:0] word_value;
+    string wave_file;
 
-fifo #(
-.DEPTH(DEPTH), 
-.DATA_WIDTH(DATA_WIDTH), 
-.ASYNC(ASYNC),
-.RD_BUFFER(RD_BUFFER)) DUT (
-    /*input wire*/ .rd_clk(rd_clk),
-    /*input wire*/ .wr_clk(wr_clk),
-    /*input wire*/ .rst(rst),
-    /*input wire [DATA_WIDTH-1:0]*/ .data_wr(data_wr),
-    /*input wire*/ .wr_en(wr_en),
-    /*output wire*/ .fifo_full(fifo_full),
-    /*output logic [DATA_WIDTH-1:0]*/ .data_rd(data_rd),
-    /*input wire*/ .rd_en(rd_en),
-    /*output wire*/ .fifo_empty(fifo_empty));
-
-always #(RD_CLK_PERIOD>>1) rd_clk = ~rd_clk;
-always #(WR_CLK_PERIOD>>1) wr_clk = ~wr_clk;
-
-
-integer data_wr_rand = 0;
-
-task fifo_write_burst_rand (input integer count);
-    for (i=0; i<count; i=i+1) begin
-        @(posedge(wr_clk)) begin
-            if($size(fifo_expected) < DEPTH & fifo_full) begin
-                $error("%0t FIFO is not full but fifo_full flag is asserted", $realtime);
-                err_cnt = err_cnt + 1;
-            end
-            wr_en <= 1;
-            data_wr_rand = $urandom_range(0,MAX_DATA);
-            data_wr <= data_wr_rand;
-            if ($size(fifo_expected) < DEPTH) begin 
-                fifo_expected.push_back(data_wr_rand);
-                $display("%0t Data written = %0d, FIFO entry = %0d", $realtime, data_wr_rand, $size(fifo_expected));
-            end else begin // check FIFO FULL flag
-                #1;
-                if(fifo_full) 
-                    $display("%0t FIFO is full, fifo_full flag is asserted correctly", $realtime);
-                else begin
-                    $error("%0t FIFO is full but fifo_full flag is not asserted", $realtime);
-                    err_cnt = err_cnt + 1;
-                end
-            end
-        end
-    end
-    @(posedge(wr_clk))
-    wr_en <= 0;
-endtask
-
-integer data_rd_act = 0;
-integer data_rd_exp = 0; 
-
-task fifo_read_burst (input integer count);
-    @(posedge(rd_clk))
-    rd_en <= 1;
-    for (i=0; i<count; i=i+1)  begin
-        @(posedge(rd_clk))begin
-            if ($size(fifo_expected) > 0) begin  
-                if(fifo_empty) begin
-                    $error("%0t FIFO is not empty but fifo_empty flag is asserted", $realtime);
-                    err_cnt = err_cnt + 1;
-                end
-                if (RD_BUFFER == 1) begin
-                  #1;
-                end
-                data_rd_exp = fifo_expected.pop_front();
-                data_rd_act <= data_rd; 
-                #1; //to make sure data_rd_act capture data_rd signal.
-                if(data_rd_exp == data_rd_act) 
-                    $display("%0t Data read = %d, FIFO entry = %d",$realtime, data_rd_act, $size(fifo_expected));
-                else begin
-                    $error("%0t Data read mismatch, ACT = %d, EXP =%d, FIFO entry = %d", $realtime, data_rd_act, data_rd_exp, $size(fifo_expected));
-                    err_cnt = err_cnt + 1;
-                end        
-            end else begin // check FIFO EMPTY flag
-                #1;
-                if(fifo_empty) 
-                    $display("%0t FIFO is empty, fifo_empty flag is asserted correctly", $realtime);
-                else begin
-                    $error("%0t FIFO is empty but fifo_empty flag is not asserted", $realtime);
-                    err_cnt = err_cnt + 1;
-                end
-            end
-        end
-    end
-//    @(posedge(rd_clk))
-    rd_en <= 0;
-endtask
-
-integer op_count = 0;
-integer j = 0;
-bit op_sel = 0;
-
-task fifo_burst_rand(int count);
-    j = count;
-    while(j >= 0) begin
-      op_sel = $urandom(); 
-      op_count = $urandom_range(1,j); // to have continuous request
-      j = j - op_count;
-      case(op_sel) 
-        1: begin // read
-            fifo_read_burst(op_count);
-            #RD_CLK_PERIOD;
-            #(3*WR_CLK_PERIOD); // It might take extra cycle for rd_pointer synchronization to deassert fifo_full, used for write operation
-        end
-        0: begin // write 
-            fifo_write_burst_rand(op_count);
-            #WR_CLK_PERIOD;
-            #(3*RD_CLK_PERIOD); // It might take extra cycle for wr_pointer synchronization to deassert fifo_empty, used for read operation
-        end
-      endcase 
-    end
-endtask
-
-integer fifo_wr_stream [$];
-integer fifo_rd_stream [$];
-
-
-task fifo_read_write_rand_simul();
-    fifo_read_burst($size(fifo_expected)); // to make sure FIFO is empty   
-    fifo_wr_stream = {};
-    fifo_rd_stream = {};
-    for(i = 0; i < DEPTH; i = i+1) begin
-        data_wr_rand = $urandom_range(0, MAX_DATA+1);
-        fifo_wr_stream.push_back(data_wr_rand);
-    end
-    fork 
+    task next_random;
         begin
-           for (i=0; i<BURST_LENGHT; i=i+1) begin  
-                @(posedge(wr_clk))
-                wr_en <= 1;
-                data_wr <= fifo_wr_stream[i];
-                fifo_expected.push_back(fifo_wr_stream[i]);
-                $display("%0t Data written = %d, FIFO entry = %d", $realtime, fifo_wr_stream[i], $size(fifo_expected));
-           end
-           @(posedge(wr_clk))
-           wr_en = 0;
+            random_state = random_state ^ (random_state << 13);
+            random_state = random_state ^ (random_state >> 17);
+            random_state = random_state ^ (random_state << 5);
         end
+    endtask
+
+    task tick(input bit write_enable, input bit read_enable);
         begin
-           @(posedge(rd_clk))
-           rd_en = 1;
-           while($size(fifo_wr_stream) != DEPTH)begin
-              @(posedge(rd_clk))
-              if(RD_BUFFER) begin
-                  #1;
-              end
-              if(!fifo_empty) begin
-                 data_rd_act <= data_rd;
-                 fifo_rd_stream.push_back(data_rd_act);
-                 data_rd_exp = fifo_expected.pop_front();
-                 $display("%0t Data read = %d, FIFO entry = %d", $realtime, data_rd_act, $size(fifo_expected));
-              end 
-           end
-//           @(posedge(rd_clk))
-           rd_en = 0;        
+            ticks = ticks + 1;
+            if (ticks > TB_TIMEOUT_CYCLES) $fatal(1, "FIFO timed out");
+            wr_en = write_enable;
+            rd_en = read_enable;
+            for (j = 0; j < DATA_WIDTH; j = j + 1) begin
+                next_random();
+                data_wr[j] = random_state[0];
+            end
+            #2; // setup before the scheduled active edges
+            next_wr = ((phase / WR_HALF) % 2) != 0;
+            next_rd = ASYNC ? (((phase / RD_HALF) % 2) != 0) : next_wr;
+            push = next_wr && !wr_clk && wr_en && !fifo_full;
+            pop = next_rd && !rd_clk && rd_en && !fifo_empty;
+            if (RD_BUFFER == 0) begin
+                if (rd_en && !fifo_empty) begin
+                    if (count == 0 || data_rd !== expected[0])
+                        $fatal(1, "combinational read mismatch count=%0d", count);
+                end else if (data_rd !== 0) $fatal(1, "disabled read must be zero");
+            end
+            if (pop) begin
+                if (count == 0) $fatal(1, "read accepted while empty");
+                expected_output = expected[0];
+                for (j = 0; j < count - 1; j = j + 1) expected[j] = expected[j+1];
+                count = count - 1;
+                transactions = transactions + 1;
+            end
+            if (push) begin
+                if (count == DEPTH) $fatal(1, "write accepted while full");
+                expected[count] = data_wr;
+                count = count + 1;
+                transactions = transactions + 1;
+            end
+            wr_clk = next_wr;
+            rd_clk = next_rd;
+            phase = phase + 1;
+            #2;
+            if (RD_BUFFER && data_rd !== expected_output)
+                $fatal(1, "registered read mismatch expected=%h actual=%h", expected_output, data_rd);
+            if (!ASYNC && (fifo_full !== (count == DEPTH) || fifo_empty !== (count == 0)))
+                $fatal(1, "synchronous flags mismatch count=%0d full=%b empty=%b", count, fifo_full, fifo_empty);
         end
-    join
-    for(i=0;i<DEPTH;i=i+1) begin
-        if (fifo_wr_stream[i] != fifo_rd_stream[i]) begin
-            $display("%0t ERROR data_rd %d does not match data_wr %d", $realtime, fifo_rd_stream[i], fifo_wr_stream[i]);
-            err_cnt = err_cnt + 1;
+    endtask
+
+    task reset_fifo;
+        begin
+            wr_clk = 0;
+            rd_clk = 0;
+            wr_en = 0;
+            rd_en = 0;
+            #1 rst = 1;
+            count = 0;
+            expected_output = 0;
+            #1;
+            if (fifo_empty !== 1 || data_rd !== 0) $fatal(1, "asynchronous reset failed");
+            #5 rst = 0;
+            phase = 0;
+            // Warm up reset-release synchronizers without accepting traffic.
+            repeat (8 * (WR_HALF + RD_HALF)) begin
+                wr_clk = ((phase / WR_HALF) % 2) != 0;
+                rd_clk = ASYNC ? (((phase / RD_HALF) % 2) != 0) : wr_clk;
+                phase = phase + 1;
+                #4;
+            end
+            if (fifo_full !== 0 || fifo_empty !== 1) $fatal(1, "reset release failed");
         end
-    end
-endtask
+    endtask
 
-initial begin
-    string vcdfile;
-    int vcdlevel;
-    int seed;
-    int temp;
-
-    rst = 1'b1;
-    if ($value$plusargs("VCDFILE=%s",vcdfile))
-        $dumpfile(vcdfile);
-    if ($value$plusargs("VCDLEVEL=%d",vcdlevel))
-        $dumpvars(vcdlevel,tb);
-    if ($value$plusargs("SEED=%d",seed)) begin
-        temp = $urandom(seed);
-        $display("Seed = %d",seed);
+    initial begin
+        if (!$value$plusargs("SEED=%d", random_state)) random_state = 123;
+        if (random_state == 0) random_state = 32'h9e3779b9;
+        if ($value$plusargs("VCDFILE=%s", wave_file)) begin
+            $dumpfile(wave_file);
+            $dumpvars(0, tb);
+        end
+        #120;
+        reset_fifo();
+        for (round_number = 0; round_number < 4; round_number = round_number + 1) begin
+            repeat ((DEPTH + 8) * 2 * WR_HALF) tick(1, 0);
+            if (count != DEPTH || fifo_full !== 1) $fatal(1, "capacity mismatch count=%0d", count);
+            repeat ((DEPTH + 8) * 2 * RD_HALF) tick(0, 1);
+            if (count != 0 || fifo_empty !== 1) $fatal(1, "drain lost entries count=%0d", count);
+        end
+        repeat (2000) tick(1, 1);
+        reset_fifo();
+        for (i = 0; i < 6000; i = i + 1) begin
+            next_random();
+            tick(random_state[0], random_state[1]);
+        end
+        repeat ((DEPTH + 8) * 2 * RD_HALF) tick(0, 1);
+        if (count != 0) $fatal(1, "random drain incomplete");
+        repeat ((DEPTH + 8) * 2 * WR_HALF) tick(1, 0);
+        reset_fifo();
+        repeat (100) tick(0, 1);
+        $display("ALL TESTS PASSED: %0d transactions", transactions);
+        $finish;
     end
-    rst = 1;
-    #100 
-    rst = 0;
-    repeat(TEST_WEIGHT) begin
-        $display("\n%0t FIFO WRITE BURST SEQ",$realtime);
-        fifo_write_burst_rand(DEPTH+3);
-        #1000;
-        $display("\n%0t FIFO READ BURST SEQ",$realtime);
-        fifo_read_burst(DEPTH+3);
-        #1000;
-    end
-    $display("\n%0t FIFO RANDOM READ WRITE SEQ",$realtime);
-    fifo_burst_rand(TEST_WEIGHT*DEPTH);
-    #1000;
-    repeat(TEST_WEIGHT) begin
-        $display("\n%0t FIFO SIMULTANEOUS RANDOM READ WRITE SEQ",$realtime);
-        fifo_read_write_rand_simul();
-    end
-    #1000;
-    if (err_cnt > 0) begin
-        $display("\n%0t TEST FAILED",$realtime);
-        $display("Error count = %d\n", err_cnt);
-    end else
-        $display("\n%0t TEST PASSED\n", $realtime);
-    $finish;
-end
-
-initial begin
-    #(SIM_TIMEOUT);
-    $display("\n%0t TEST FAILED", $realtime);
-    $display("SIM TIMEOUT!\n");
-    $finish;
-end
-
 endmodule

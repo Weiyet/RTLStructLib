@@ -53,7 +53,7 @@ uvm_config_db#(virtual fifo_vip_if)::set(null, "*", "fifo_vip_vif", dut_if);
 ```systemverilog
 // In your test's build_phase()
 cfg = fifo_vip_config::type_id::create("cfg");
-cfg.DEPTH = 12;        // Match your FIFO depth
+cfg.DEPTH = 16;        // Match your FIFO depth
 cfg.DATA_WIDTH = 8;    // Match your data width
 cfg.ASYNC = 1;         // 1=async clocks, 0=sync
 cfg.RD_BUFFER = 1;     // 1=buffered read, 0=combinational

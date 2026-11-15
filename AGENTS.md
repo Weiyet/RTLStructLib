@@ -16,8 +16,8 @@ Read the affected block's `README.md` for interfaces, parameters, and timing beh
 
 Use a Linux/WSL environment with GNU Make and shell utilities. Install Icarus Verilog for simulation, Yosys for synthesis, and GTKWave for waveform inspection; Python benches require `cocotb`, with `cocotb-bus` or `pyuvm` as applicable.
 
-- `make check`: default SV/cocotb checks for Systolic, List, three Linked Lists, and LIFO.
-- `make ci MODULES="singly doubly"`: full regressions, synthesis, and supported netlist checks; omit `MODULES` for all six blocks.
+- `make check`: default SV/cocotb checks for Systolic, List, three Linked Lists, LIFO, and FIFO.
+- `make ci MODULES="singly doubly"`: full regressions, synthesis, and supported netlist checks; omit `MODULES` for all seven blocks.
 - `make test-tools`: check runner failure handling. See `Utils/ci/README.md` for setup and reports.
 - `make -C FIFO/tb/sv sim SEED=123`: compile and simulate the FIFO.
 - `make -C FIFO/tb/cocotb`: run standalone cocotb tests.

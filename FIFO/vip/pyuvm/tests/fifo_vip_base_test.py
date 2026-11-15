@@ -23,7 +23,7 @@ class BaseTest(uvm_test):
 
         # Create config
         self.cfg = FifoVipConfig("cfg")
-        self.cfg.DEPTH = 12
+        self.cfg.DEPTH = 16
         self.cfg.DATA_WIDTH = 8
         self.cfg.ASYNC = 1
         self.cfg.RD_BUFFER = 1

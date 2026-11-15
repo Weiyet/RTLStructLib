@@ -35,7 +35,7 @@ public:
 
     // Constructor
     FifoScoreboard()
-        : depth(12)
+        : depth(16)
         , data_width(8)
         , verbose(false)
         , wr_count(0)

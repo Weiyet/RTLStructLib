@@ -35,7 +35,7 @@ module tb_top;
     
     // DUT instantiation - MODIFY FOR YOUR FIFO
     fifo #(
-        .DEPTH(12),
+        .DEPTH(16),
         .DATA_WIDTH(8),
         .ASYNC(1),
         .RD_BUFFER(1)

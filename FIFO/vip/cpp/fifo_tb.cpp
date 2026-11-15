@@ -31,7 +31,7 @@ using namespace fifo_vip;
 // Configuration
 //=============================================================================
 struct TestConfig {
-    int depth = 12;
+    int depth = 16;
     int data_width = 8;
     bool rd_buffer = true;
     bool async = false;  // Use synchronous mode for simplicity

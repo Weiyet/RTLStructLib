@@ -1,95 +1,86 @@
-# FIFO (Queue)
+# FIFO queue
 
-A configurable FIFO (First-In-First-Out) buffer implementation in Verilog with support for both synchronous and asynchronous clock domains. The module uses Gray code for pointer synchronization in asynchronous mode to prevent metastability issues.
-
-## Features
-
-- Configurable data width and depth
-- Support for both synchronous and asynchronous clock domains
-- Optional registered read output
-- Gray code synchronization for clock domain crossing
-- Full and empty status flags
-- Automatic pointer wraparound
-- Parameterized design for easy customization
+Synthesizable SystemVerilog FIFO with full capacity, synchronous or asynchronous
+clocks, and registered or gated combinational read output. Source: `src/fifo.sv`.
 
 ## Parameters
 
-| Parameter    | Description                                      | Default |
-|-------------|--------------------------------------------------|---------|
-| DEPTH       | Number of entries in the FIFO                     | 12      |
-| DATA_WIDTH  | Width of each data entry                         | 8       |
-| ASYNC       | Enable asynchronous mode (1) or synchronous (0)   | 1       |
-| RD_BUFFER   | Enable registered read output (1) or bypass (0)   | 1       |
+| Parameter | Default | Contract |
+|---|---|---|
+| `DEPTH` | **16** | ASYNC=1: power of two, at least 2; ASYNC=0: any positive depth |
+| `DATA_WIDTH` | 8 | Positive bit width |
+| `ASYNC` | 1 | 1: independent clocks; 0: connect both clock ports to the same clock |
+| `RD_BUFFER` | 1 | 1: registered output; 0: gated combinational output |
 
-## Interface Signals
+The default depth changed from 12 to 16 to satisfy the asynchronous Gray-ring
+contract. Use `ASYNC=0, DEPTH=12` for a synchronous 12-entry FIFO. Unsupported
+parameters fail simulation/elaboration.
 
-| Signal      | Direction | Width         | Description                                    |
-|-------------|-----------|---------------|------------------------------------------------|
-| rd_clk      | Input     | 1            | Read clock domain                              |
-| wr_clk      | Input     | 1            | Write clock domain                             |
-| rst         | Input     | 1            | Active high reset                              |
-| data_wr     | Input     | DATA_WIDTH   | Data input for writing                        |
-| wr_en       | Input     | 1            | Write enable signal                           |
-| fifo_full   | Output    | 1            | FIFO full indicator                           |
-| data_rd     | Output    | DATA_WIDTH   | Data output from reading                      |
-| rd_en       | Input     | 1            | Read enable signal                            |
-| fifo_empty  | Output    | 1            | FIFO empty indicator                          |
+## Interface and acceptance
 
-## Usage Example
+Inputs: `wr_clk`, `rd_clk`, active-high asynchronous `rst`, `wr_en`,
+`rd_en`, `data_wr[DATA_WIDTH-1:0]`. Outputs: `fifo_full`, `fifo_empty`,
+`data_rd[DATA_WIDTH-1:0]`.
 
-```verilog
-// Instantiate a 16-deep, 32-bit wide asynchronous FIFO with registered output
-fifo #(
-    .DEPTH(16),
-    .DATA_WIDTH(32),
-    .ASYNC(1),
-    .RD_BUFFER(1)
-) fifo_inst (
-    .rd_clk(read_clock),
-    .wr_clk(write_clock),
-    .rst(reset),
-    .data_wr(write_data),
-    .wr_en(write_enable),
-    .fifo_full(full_flag),
-    .data_rd(read_data),
-    .rd_en(read_enable),
-    .fifo_empty(empty_flag)
-);
+A write is accepted at a write rising edge when `wr_en && !fifo_full`.
+A read is accepted at a read rising edge when `rd_en && !fifo_empty`.
+Use flags **before** the edge. Rejected operations do not advance pointers.
+There is no empty bypass or full replacement: simultaneous operations are
+accepted independently according to their pre-edge flags.
+
+With `RD_BUFFER=1`, accepted reads update the output after the edge; otherwise
+the last value holds. With `RD_BUFFER=0`, the current head is visible only while
+`rd_en && !fifo_empty`; sample it before the read edge. The output then advances
+to the next head, or zero when disabled/empty. This mode is not always-on FWFT.
+
+## Reset and clock-domain crossing
+
+Reset discards all entries and clears the registered output, without resetting
+the memory array. Both flags assert during reset: full blocks writes, empty
+blocks reads. Two local clock edges release each domain; operations begin on
+the following edge. A stopped clock keeps its domain blocked. Apply reset to
+the entire FIFO, not to one domain independently.
+
+Synchronous mode uses an occupancy counter and explicit address wrap.
+Asynchronous mode uses address-plus-wrap binary pointers, registered Gray
+encodings, and two `ASYNC_REG` stages in each direction. Only the second stage
+drives local full/empty decisions. Flags can conservatively remain asserted
+until the remote pointer propagates through two synchronizer stages and the
+local flag register. Source Gray pointers change at most one bit per accepted
+operation; destination samples may skip source states.
+
+### Physical integration
+
+Simulation checks ordering and Gray transitions, not metastability or routed
+timing. Preserve synchronizer placement attributes, constrain both clocks,
+and bound Gray-bus delay/skew to the first synchronizer stage. The helper in
+[`constraints/cdc.tcl`](constraints/cdc.tcl) accepts verified source/first-stage
+register collections and both clock periods in ns; it applies a conservative
+minimum-period budget in both directions. Inspect synthesized register names
+before calling `rtlstruct_fifo_cdc`; no hierarchy is assumed.
+
+Do not override those maximum-delay paths with blanket asynchronous clock
+groups or false paths. Keep the first-to-second synchronizer paths timed
+normally. Review reset recovery/removal, data-memory crossings, CDC reports,
+`report_bus_skew`, and timing reports in the integrating design. These
+constraints follow [AMD UG903](https://docs.amd.com/r/en-US/ug903-vivado-using-constraints/Constraining-Asynchronous-Signals).
+No Vivado CDC analysis, place/route or STA sign-off is included here.
+
+## Verification
+
+```sh
+make -C FIFO/tb/sv sim ASYNC=0 DEPTH=3 RD_BUFFER=0
+make -C FIFO/tb/cocotb DEPTH=4 WR_HALF=5 RD_HALF=2
+make ci MODULES=fifo
 ```
 
-## Design Notes
+Use Linux/WSL and `Utils/ci/requirements.txt`. Clean builds when changing
+parameters. Independent SV and Python queue scoreboards cover fill/drain,
+overflow/underflow, repeated wrap, simultaneous operations, reset while full,
+unrelated/equal clock rates, stopped clocks, both output modes, wide data, and
+seeded traffic. The matrix contains 42 real-RTL runs, six negative checks
+(timeouts and illegal parameters), four synthesis builds and four functional
+mapped-netlist simulations. `WAVES=1` enables VCD/FST output.
 
-1. **Clock Domain Crossing**: In asynchronous mode (ASYNC=1), the design uses Gray code encoding for pointer synchronization to prevent metastability issues when crossing clock domains.
-
-2. **Read Buffer**: When RD_BUFFER=1, the read data output is registered, adding one clock cycle of latency but improving timing. When RD_BUFFER=0, the read data is combinatorial.
-
-3. **Full/Empty Flags**: 
-   - The empty flag is asserted when read and write pointers are equal
-   - The full flag is asserted when the next write pointer would equal the current read pointer
-
-4. **Reset Behavior**: 
-   - All pointers are reset to zero
-   - All memory locations are cleared
-   - All flags are deasserted
-
-## Implementation Details
-
-The module uses separate read and write pointers for tracking FIFO occupancy. In asynchronous mode, these pointers are converted to Gray code before being synchronized across clock domains. The implementation includes:
-
-- Binary counters for read/write operation
-- Gray code conversion for pointer synchronization
-- Two-stage synchronizers for clock domain crossing
-- Configurable output registration
-- Automatic pointer wraparound at FIFO boundaries
-
-## Timing Considerations
-
-1. In asynchronous mode, allow at least 2 clock cycles for pointer synchronization
-2. When RD_BUFFER=1, read data is available one clock cycle after rd_en assertion
-3. Full and empty flags are registered outputs
-
-## Limitations
-
-- The DEPTH parameter must be a power of 2 for proper wraparound behavior
-- Simultaneous read/write at full/empty conditions should be managed by external logic
-- The reset signal must be synchronized to both clock domains
+Legacy UVM, pyUVM and C++ VIP are not part of this verified suite; integrations
+must honor the updated reset backpressure and asynchronous flag latency.

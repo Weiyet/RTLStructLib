@@ -14,7 +14,7 @@ TOPLEVEL = fifo  # DUT Top
 MODULE   = tb_fifo  # Top Python file (without .py)
 
 # DUT parameters - passed to simulator
-COMPILE_ARGS = -Pfifo.DEPTH=12
+COMPILE_ARGS = -Pfifo.DEPTH=16
 COMPILE_ARGS += -Pfifo.DATA_WIDTH=8
 COMPILE_ARGS += -Pfifo.ASYNC=1
 COMPILE_ARGS += -Pfifo.RD_BUFFER=1

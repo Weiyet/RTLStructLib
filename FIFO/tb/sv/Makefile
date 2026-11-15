@@ -1,28 +1,40 @@
+SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
+.PHONY: sim gen_sim synth netlist_sim clean
+YOSYS_DATDIR ?= /usr/share/yosys
 DUT = fifo
 SIM_OPTS ?= ../../src/fifo.sv
-SEED ?= $$(shuf -i 1-10000 -n 1)
-XILINX_LIB_URL ?= https://github.com/Xilinx/XilinxUnisimLibrary.git
-XILINX_LIB_DIR ?= XilinxUnisimLibrary/verilog/src
-
-sim: gen_sim 
-	./${DUT}.sim +VCDFILE=sim.vcd +VCDLEVEL=0 +SEED=${SEED} | tee sim.log
-
-gen_sim: tb.sv ${SIM_OPTS}  # to generate executable file by using iverilator  
-	iverilog -g2012 -s tb -o ${DUT}.sim $^
-
-synth: ${SIM_OPTS}
-	yosys -p synth_xilinx ${SIM_OPTS} -L synth.log -o ${DUT}.netlist.v 
-    #timeout
-
-netlist_sim: gen_netlist_sim 
-	./${DUT}.netlist.sim +VCDFILE=netlist_sim.vcd +VCDLEVEL=0 +SEED=${SEED} | tee netlist_sim.log
-
-gen_netlist_sim: tb.sv ${DUT}.netlist.v | ${XILINX_LIB_DIR}/.git
-	iverilog -g2012 -DXILINX_GLS -s tb -y ${XILINX_LIB_DIR} -y ${XILINX_LIB_DIR}/unisims -DXILINX_GLS -o ${DUT}.netlist.sim tb.sv ${DUT}.netlist.v
-
-${XILINX_LIB_DIR}/.git:
-	git clone ${XILINX_LIB_URL}
-
+SEED ?= 123
+WAVES ?= 0
+SIM_BUILD ?= sim_build
+DATA_WIDTH ?= 8
+DEPTH ?= 16
+ASYNC ?= 1
+RD_BUFFER ?= 1
+WR_HALF ?= 3
+RD_HALF ?= 5
+TB_TIMEOUT_CYCLES ?= 100000
+PARAMETERS = DATA_WIDTH DEPTH ASYNC RD_BUFFER WR_HALF RD_HALF TB_TIMEOUT_CYCLES
+PARAM_ARGS = $(foreach param,$(PARAMETERS),-Ptb.$(param)=$($(param)))
+ifeq ($(WAVES),1)
+WAVE_ARGS = +VCDFILE=$(SIM_BUILD)/sim.vcd
+endif
+sim: gen_sim
+	vvp $(SIM_BUILD)/$(DUT).sim +SEED=$(SEED) $(WAVE_ARGS) | tee $(SIM_BUILD)/sim.log
+gen_sim: tb.sv $(SIM_OPTS)
+	mkdir -p $(SIM_BUILD)
+	iverilog -g2012 -s tb $(PARAM_ARGS) $(COMPILE_ARGS) -o $(SIM_BUILD)/$(DUT).sim tb.sv $(SIM_OPTS)
+synth: $(SIM_OPTS)
+	mkdir -p $(SIM_BUILD)
+	yosys -q -p 'read_verilog -sv $(SIM_OPTS); chparam -set DATA_WIDTH $(DATA_WIDTH) -set DEPTH $(DEPTH) -set ASYNC $(ASYNC) -set RD_BUFFER $(RD_BUFFER) $(DUT); hierarchy -top $(DUT); proc; check -assert; select -assert-none t:$$dlatch t:$$adlatch; synth_xilinx -top $(DUT); check -assert; select -assert-none t:LDCE t:LDPE' -L $(SIM_BUILD)/synth.log -o $(SIM_BUILD)/$(DUT).netlist.v
+ifeq ($(SKIP_SYNTH),1)
+netlist_sim: $(SIM_BUILD)/$(DUT).netlist.v
+else
+netlist_sim: synth
+endif
+	iverilog -g2012 -DFIFO_NETLIST -s tb $(PARAM_ARGS) -o $(SIM_BUILD)/$(DUT).netlist.sim tb.sv $(SIM_BUILD)/$(DUT).netlist.v $(YOSYS_DATDIR)/xilinx/cells_sim.v
+	vvp $(SIM_BUILD)/$(DUT).netlist.sim +SEED=$(SEED) | tee $(SIM_BUILD)/netlist_sim.log
 clean:
-	rm -f ${DUT}_sim sim.log sim.vcd
-	rm -f ${DUT}.netlist.v synth.log
+	rm -f $(SIM_BUILD)/$(DUT).sim $(SIM_BUILD)/sim.log $(SIM_BUILD)/sim.vcd
+	rm -f $(SIM_BUILD)/$(DUT).netlist.v $(SIM_BUILD)/synth.log
+	rm -f $(SIM_BUILD)/$(DUT).netlist.sim $(SIM_BUILD)/netlist_sim.log

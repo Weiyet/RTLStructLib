@@ -12,7 +12,7 @@ class fifo_vip_config extends uvm_object;
     `uvm_object_utils(fifo_vip_config)
     
     // DUT parameters - CHANGE THESE FOR YOUR FIFO
-    int DEPTH = 12;
+    int DEPTH = 16;
     int DATA_WIDTH = 8;
     bit ASYNC = 1;
     bit RD_BUFFER = 1;

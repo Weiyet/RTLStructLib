@@ -28,7 +28,7 @@ public:
 
     // Constructor
     FifoCoverage()
-        : depth(12)
+        : depth(16)
         , data_width(8)
     {}
 
