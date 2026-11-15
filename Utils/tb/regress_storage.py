@@ -13,8 +13,13 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "Utils/tb"))
 from check_results import validate_results
 
-BLOCKS = {"fifo": ("FIFO", "fifo", 5)}
+BLOCKS = {"fifo": ("FIFO", "fifo", 5), "table": ("Table", "table_top", 5)}
 CONFIGS = {
+    "table": [{}, dict(TABLE_SIZE=1, DATA_WIDTH=1, INPUT_RATE=1, OUTPUT_RATE=1),
+              dict(TABLE_SIZE=3, DATA_WIDTH=17, INPUT_RATE=3, OUTPUT_RATE=2),
+              dict(TABLE_SIZE=8, DATA_WIDTH=40, INPUT_RATE=2, OUTPUT_RATE=3),
+              dict(TABLE_SIZE=5, DATA_WIDTH=8, INPUT_RATE=1, OUTPUT_RATE=4),
+              dict(TABLE_SIZE=17, DATA_WIDTH=1, INPUT_RATE=4, OUTPUT_RATE=1)],
     "fifo": [dict(ASYNC=mode, RD_BUFFER=buffered, DEPTH=depth, DATA_WIDTH=width)
              for mode, dimensions in ((0, [(1, 1), (3, 17), (12, 40)]),
                                       (1, [(2, 1), (4, 17), (16, 8)]))
@@ -46,7 +51,7 @@ def run(module, bench, config, seed, waves, build, negative=None):
                "sim" if bench == "sv" else "check", f"SIM_BUILD={build}",
                f"SEED={seed}", f"WAVES={waves}"]
     command.extend(f"{key}={value}" for key, value in config.items())
-    source = ROOT / directory / "src" / f"{top}.sv"
+    source = ROOT / directory / "src" / ("table.sv" if module == "table" else f"{top}.sv")
     if bench == "sv":
         command.append(f"SIM_OPTS={source}")
     else:

@@ -99,8 +99,8 @@ Include file list <Data structure>/src/rtl_list.f to your simulation or project.
 
 From Linux/WSL, run `make check` for the default real-RTL benches or `make ci`
 for the complete verified regressions, synthesis and mapped-netlist checks.
-Select blocks with `MODULES="systolic list circular singly doubly lifo fifo"`.
-The current CI scope covers these seven modules; see the
+Select blocks with `MODULES="systolic list circular singly doubly lifo fifo table"`.
+The current CI scope covers these eight modules; see the
 [verification guide](Utils/ci/README.md) for dependencies, check counts and reports.
 
 ### Work in Progress/Future Works 🚀

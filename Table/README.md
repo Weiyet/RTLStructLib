@@ -1,83 +1,49 @@
 # Multi-port table
 
-## Overview
-This Verilog module implements a flexible table structure that supports multiple simultaneous read and write operations. It functions similarly to a register file, providing direct indexed access to stored data without the need for hashing mechanisms.
+A single-clock register file with independent packed write/read ports and
+registered read data. Source: `src/table.sv`, top module `table_top`.
 
-## Features
-- Configurable table size and data width
-- Support for multiple simultaneous write operations
-- Support for multiple simultaneous read operations
-- Synchronous operation with reset capability
-- Direct indexed access to stored data
+## Parameters and packing
 
-## Parameters
+`TABLE_SIZE=32`, `DATA_WIDTH=8`, `INPUT_RATE=2`, and `OUTPUT_RATE=2`
+must all be positive. Address width is `max(1, $clog2(TABLE_SIZE))`;
+a single-entry table therefore uses one address bit.
 
-| Parameter    | Description                                    | Default |
-|-------------|------------------------------------------------|---------|
-| TABLE_SIZE  | Number of entries in the table                 | 32      |
-| DATA_WIDTH  | Width of each data entry in bits               | 8       |
-| INPUT_RATE  | Number of simultaneous write operations        | 2       |
-| OUTPUT_RATE | Number of simultaneous read operations         | 2       |
+Port 0 occupies the least significant slice: write address
+`index_wr[p*INDEX_WIDTH +: INDEX_WIDTH]`, write data
+`data_wr[p*DATA_WIDTH +: DATA_WIDTH]`, and read output
+`data_rd[p*DATA_WIDTH +: DATA_WIDTH]`. Each writer has its own `wr_en[p]`;
+one `rd_en` enables all read ports.
 
-## Port Descriptions
+## Defined clock-edge behavior
 
-### Input Ports
+- Enabled, in-range writes update storage at the rising edge.
+- When writers address the same entry, the highest numbered enabled port wins.
+- An enabled read of an entry written on that edge returns the winning **new**
+  value. Explicit forwarding implements this write-first behavior.
+- Out-of-range writes are ignored; enabled out-of-range reads return zero.
+- When `rd_en=0`, all read outputs hold their previous values, even during writes.
+- Active-high asynchronous `rst` clears storage and outputs. Reset overrides
+  all operations; deassert it synchronously in the integrating design.
 
-| Port      | Width                           | Description                    |
-|-----------|----------------------------------|--------------------------------|
-| clk       | 1                                | System clock signal            |
-| rst       | 1                                | Active-high reset signal       |
-| wr_en     | INPUT_RATE                       | Write enable signals           |
-| rd_en     | 1                                | Read enable signal             |
-| index_wr  | INPUT_RATE * log2(TABLE_SIZE)    | Write address indices         |
-| index_rd  | OUTPUT_RATE * log2(TABLE_SIZE)   | Read address indices          |
-| data_wr   | INPUT_RATE * DATA_WIDTH          | Write data input              |
+Clocked storage and output assignments are nonblocking; each process uses
+separate loop indices. This removes the original simulator scheduling race.
+Storage is implemented as resettable registers with forwarding muxes; area and
+read-path delay grow with table size and port count. BRAM inference is not
+promised for this multi-write-port interface.
 
-### Output Ports
+## Verification
 
-| Port      | Width                    | Description          |
-|-----------|--------------------------|----------------------|
-| data_rd   | OUTPUT_RATE * DATA_WIDTH | Read data output    |
-
-## Timing
-- All operations are synchronized to the positive edge of the clock
-- Reset is asynchronous and active-high
-- Write operations occur on the next clock edge after wr_en is asserted
-- Read operations occur on the next clock edge after rd_en is asserted
-
-## Usage Example
-```verilog
-table_top #(
-    .TABLE_SIZE(64),
-    .DATA_WIDTH(16),
-    .INPUT_RATE(2),
-    .OUTPUT_RATE(2)
-) table_inst (
-    .clk(system_clk),
-    .rst(system_rst),
-    .wr_en(write_enable),
-    .rd_en(read_enable),
-    .index_wr(write_indices),
-    .index_rd(read_indices),
-    .data_wr(write_data),
-    .data_rd(read_data)
-);
+```sh
+make -C Table/tb/sv sim TABLE_SIZE=3 INPUT_RATE=3 DATA_WIDTH=17
+make -C Table/tb/cocotb TABLE_SIZE=1 DATA_WIDTH=1 INPUT_RATE=1 OUTPUT_RATE=1
+make ci MODULES=table
 ```
 
-## Implementation Details
-- Uses a 2D register array for data storage
-- Implements parallel write operations using generate blocks
-- Supports concurrent read operations
-- Reset initializes all storage elements to zero
-- Uses Verilog-2001 syntax and features
-
-## Performance Considerations
-- All read and write operations complete in a single clock cycle
-- No read-after-write hazard protection is implemented
-- Care should be taken when accessing the same index simultaneously
-
-## Limitations
-- No built-in error checking for invalid indices
-- No protection against simultaneous read/write to same location
-- Write operations take precedence in case of conflicts
-
+Run in Linux/WSL with `Utils/ci/requirements.txt`; clean builds after parameter
+changes. SV and cocotb scoreboards check write priority, same-edge forwarding,
+independent ports, invalid indices, disabled-read holding, asynchronous reset,
+wide data, and seeded random traffic. The full suite contains 18 real-RTL
+runs, two forced-timeout checks, four synthesis builds, and four functional
+mapped-netlist simulations. Use `SEED=123` for reproducibility and `WAVES=1`
+for waveforms. Legacy UVM/pyUVM VIP is outside this verified suite.

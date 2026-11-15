@@ -1,181 +1,130 @@
-`timescale 1ns / 1ps
-//////////////////////////////////////////////////////////////////////////////////
-// 
-// Create Date: 05/05/2024 03:37:34 PM
-// Last Update Date: 01/02/2024 10:37:12 AM
-// Module Name: tb
-// Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Description: 1. table_write_random() --> table_read_compare()
-// Additional Comments:
-// 
-//////////////////////////////////////////////////////////////////////////////////
-
-
-module tb(
-);
-    parameter TABLE_SIZE = 32;
-    parameter DATA_WIDTH = 8;
-    parameter INPUT_RATE = 2;
-    parameter OUTPUT_RATE = 2;
-    parameter TB_CLK_PERIOD = 100;
-    parameter TB_TEST_WEIGHT = 1; 
-    parameter TB_SIM_TIMEOUT = 30; //ms.
-
-    localparam MAX_DATA = 2**(DATA_WIDTH) - 1;
-    localparam INDEX_WIDTH = $clog2(TABLE_SIZE-1);
-
-    bit [DATA_WIDTH-1:0] table_expected [TABLE_SIZE];
-    integer index_queue[$];
-
-    reg clk=0;
-    reg rst=0;
-    reg wr_en=0;
-    reg rd_en=0;
-    reg [INPUT_RATE*$clog2(TABLE_SIZE)-1:0] index_wr=0;   
-    reg [OUTPUT_RATE*$clog2(TABLE_SIZE)-1:0] index_rd=0;
-    reg [INPUT_RATE*DATA_WIDTH-1:0] data_wr=0;
+`timescale 1ns/1ps
+module tb;
+    parameter TABLE_SIZE = 32, DATA_WIDTH = 8, INPUT_RATE = 2, OUTPUT_RATE = 2;
+    parameter TB_TIMEOUT_CYCLES = 10000;
+    localparam INDEX_WIDTH = (TABLE_SIZE < 2) ? 1 : $clog2(TABLE_SIZE);
+    reg clk = 0, rst = 0, rd_en = 0;
+    reg [INPUT_RATE-1:0] wr_en = 0;
+    reg [INPUT_RATE*INDEX_WIDTH-1:0] index_wr = 0;
+    reg [OUTPUT_RATE*INDEX_WIDTH-1:0] index_rd = 0;
+    reg [INPUT_RATE*DATA_WIDTH-1:0] data_wr = 0;
     wire [OUTPUT_RATE*DATA_WIDTH-1:0] data_rd;
+`ifdef TABLE_NETLIST
+    table_top dut (.*);
+`else
+    table_top #(.TABLE_SIZE(TABLE_SIZE), .DATA_WIDTH(DATA_WIDTH),
+                .INPUT_RATE(INPUT_RATE), .OUTPUT_RATE(OUTPUT_RATE)) dut (.*);
+`endif
+    reg [DATA_WIDTH-1:0] expected [0:TABLE_SIZE-1];
+    reg [OUTPUT_RATE*DATA_WIDTH-1:0] expected_output = 0;
+    reg [31:0] random_state;
+    integer cycles = 0, transactions = 0;
+    integer i, port_number, bit_number, address;
+    string wave_file;
 
-    reg [DATA_WIDTH-1:0] data_wr_rand;
-    reg [$clog2(TABLE_SIZE)-1:0] index_wr_rand;
+    task next_random;
+        begin
+            random_state = random_state ^ (random_state << 13);
+            random_state = random_state ^ (random_state >> 17);
+            random_state = random_state ^ (random_state << 5);
+        end
+    endtask
 
-    integer err_cnt = 0;
-
-    `ifdef XILINX_GLS
-        glbl glbl (); // for Xilinx GLS
-    `endif
-
-    table_top #(
-        .TABLE_SIZE(TABLE_SIZE), 
-        .DATA_WIDTH(DATA_WIDTH),
-        .INPUT_RATE(INPUT_RATE), 
-        .OUTPUT_RATE(OUTPUT_RATE)) DUT (
-            /*input wire*/ .clk(clk),
-            /*input wire*/ .rst(rst), 
-            /*input wire*/ .wr_en(wr_en),
-            /*input wire*/ .rd_en(rd_en),
-            /*input wire [INPUT_RATE*$clog2(TABLE_SIZE)-1:0]*/ .index_wr(index_wr),
-            /*input wire [OUTPUT_RATE*$clog2(TABLE_SIZE)-1:0]*/ .index_rd(index_rd),
-            /*input wire [INPUT_RATE*DATA_WIDTH-1:0]*/ .data_wr(data_wr),
-            /*output reg [OUTPUT_RATE*DATA_WIDTH-1:0]*/ .data_rd(data_rd));
-
-    always #(TB_CLK_PERIOD>>1) clk = ~clk;
-
-    task table_write_random (input integer count);
-        for (int i=0; i<count; i=i+1) begin
-            @(posedge(clk)) begin
-                #1;
-                for (int j=1; j<=INPUT_RATE; j=j+1) begin
-                    data_wr_rand = $urandom_range(0,MAX_DATA);
-                    index_wr_rand = $urandom_range(0,TABLE_SIZE-1);
-                    data_wr[j*DATA_WIDTH-1 -: DATA_WIDTH] = data_wr_rand;
-                    index_wr[j*INDEX_WIDTH-1 -:INDEX_WIDTH] = index_wr_rand;
-                    table_expected[index_wr_rand] = data_wr_rand;
-                    index_queue.push_back(index_wr_rand);
-                    $display("%0t table_write_random: Data %0d is written to index %0d", $realtime, data_wr_rand, index_wr_rand);
+    task step;
+        integer p, a;
+        begin
+            cycles = cycles + 1;
+            if (cycles > TB_TIMEOUT_CYCLES) $fatal(1, "Table timed out");
+            #4;
+            if (data_rd !== expected_output) $fatal(1, "output changed before clock");
+            for (p = 0; p < INPUT_RATE; p = p + 1) begin
+                a = index_wr[p*INDEX_WIDTH +: INDEX_WIDTH];
+                if (wr_en[p] && a < TABLE_SIZE)
+                    expected[a] = data_wr[p*DATA_WIDTH +: DATA_WIDTH];
+            end
+            if (rd_en) begin
+                for (p = 0; p < OUTPUT_RATE; p = p + 1) begin
+                    a = index_rd[p*INDEX_WIDTH +: INDEX_WIDTH];
+                    expected_output[p*DATA_WIDTH +: DATA_WIDTH] = (a < TABLE_SIZE) ? expected[a] : 0;
                 end
-                wr_en <= 1;
             end
+            clk = 1;
+            #2;
+            if (data_rd !== expected_output)
+                $fatal(1, "Table mismatch transaction=%0d expected=%h actual=%h", transactions, expected_output, data_rd);
+            clk = 0;
+            #2;
+            transactions = transactions + 1;
         end
-        @(posedge(clk))
-        #1; wr_en <= 0;
     endtask
 
-    integer setup_done = 0;
-
-    bit [INDEX_WIDTH-1:0] index_target;
-    integer index_temp[$];
-
-    task table_read_compare();
-        setup_done = 0;
-        while($size(index_queue) != 0) begin
-            @(posedge(clk)) begin
-                #1;
-                rd_en <= 1;
-                for (int j=0; j<OUTPUT_RATE; j=j+1) begin
-                    index_target = index_queue.pop_front();
-                    index_rd[(j+1)*INDEX_WIDTH-1 -: INDEX_WIDTH] = index_target; 
-                    index_temp.push_back(index_target);
-                    if(setup_done) begin
-                        index_target = index_temp.pop_front();
-                        if(data_rd[(j+1)*DATA_WIDTH-1 -: DATA_WIDTH] !== table_expected[index_target]) begin
-                            err_cnt = err_cnt + 1;
-                            $error("%0t table_read_compare: data read at index %0d is incorrect, ACT:%0d , EXP:%0d ", $realtime, index_target, data_rd[(j+1)*DATA_WIDTH-1 -: DATA_WIDTH], table_expected[index_target]);
-                        end else begin 
-                            $display("%0t table_read_compare: Data %0d is read from index %0d", $realtime, data_rd[(j+1)*DATA_WIDTH-1 -: DATA_WIDTH], index_target);
-                        end
-                    end  
-                end 
-                setup_done = 1;
-            end
-        end
-        //final index_queue request 
-        @(posedge(clk)) begin
+    task reset_table;
+        integer a;
+        begin
+            clk = 0;
+            #1 rst = 1;
+            for (a = 0; a < TABLE_SIZE; a = a + 1) expected[a] = 0;
+            expected_output = 0;
             #1;
-            for (int j=0; j<OUTPUT_RATE; j=j+1) begin
-                if(setup_done) begin
-                    index_target = index_temp.pop_front();
-                    if(data_rd[(j+1)*DATA_WIDTH-1 -: DATA_WIDTH] !== table_expected[index_target]) begin
-                        err_cnt = err_cnt + 1;
-                        $error("%0t table_read_compare: data read at index %0d is incorrect, ACT:%0d , EXP:%0d ", $realtime, index_target, data_rd[(j+1)*DATA_WIDTH-1 -: DATA_WIDTH], table_expected[index_target]);
-                    end else begin 
-                        $display("%0t table_read_compare: Data %0d is read from index %0d", $realtime, data_rd[(j+1)*DATA_WIDTH-1 -: DATA_WIDTH], index_target);
-                    end
-                end  
-            end 
-            setup_done = 1;
-            rd_en <= 0;
+            if (data_rd !== 0) $fatal(1, "Table asynchronous reset failed");
+            #1 rst = 0;
+            wr_en = 0;
+            rd_en = 0;
+            step();
         end
     endtask
 
     initial begin
-        string vcdfile;
-        int vcdlevel;
-        int seed;
-        int temp;
-
-        rst = 1'b1;
-        if ($value$plusargs("VCDFILE=%s",vcdfile))
-            $dumpfile(vcdfile);
-        if ($value$plusargs("VCDLEVEL=%d",vcdlevel))
-            $dumpvars(vcdlevel,tb);
-        if ($value$plusargs("SEED=%d",seed)) begin
-            temp = $urandom(seed);
-            $display("Seed = %d",seed);
+        if (!$value$plusargs("SEED=%d", random_state)) random_state = 123;
+        if (random_state == 0) random_state = 32'h9e3779b9;
+        if ($value$plusargs("VCDFILE=%s", wave_file)) begin
+            $dumpfile(wave_file);
+            $dumpvars(0, tb);
         end
-        // rst = 1;
-        // #100 
-        // rst = 0;
-        repeat(TB_TEST_WEIGHT) begin
-            rst = 1;
-            #100 
-            for (int i=0; i<TABLE_SIZE; i=i+1) begin
-              table_expected[i] = 'b0;
+        #120;
+        reset_table();
+        // Invalid addresses have deterministic zero reads and ignored writes.
+        if (TABLE_SIZE < 2**INDEX_WIDTH) begin
+            index_wr = {INPUT_RATE{ {INDEX_WIDTH{1'b1}} }};
+            index_rd = {OUTPUT_RATE{ {INDEX_WIDTH{1'b1}} }};
+            wr_en = {INPUT_RATE{1'b1}};
+            data_wr = {INPUT_RATE*DATA_WIDTH{1'b1}};
+            rd_en = 1;
+            step();
+        end
+        for (i = 0; i < TABLE_SIZE; i = i + 1) begin
+            for (port_number = 0; port_number < INPUT_RATE; port_number = port_number + 1) begin
+                index_wr[port_number*INDEX_WIDTH +: INDEX_WIDTH] = i;
+                data_wr[port_number*DATA_WIDTH +: DATA_WIDTH] = i + port_number + 1;
             end
-            rst = 0;
-            $display("\n%0t TABLE RANDOM WRITE SEQ",$realtime);
-            table_write_random(20);
-            #1000;
-            $display("\n%0t TABLE READ SEQ",$realtime);
-            table_read_compare();
-            #1000;
+            for (port_number = 0; port_number < OUTPUT_RATE; port_number = port_number + 1)
+                index_rd[port_number*INDEX_WIDTH +: INDEX_WIDTH] = i;
+            wr_en = {INPUT_RATE{1'b1}};
+            rd_en = 1;
+            step(); // all writers and readers collide; highest writer wins
+            wr_en = 0;
+            step();
         end
-    
-        #1000;
-        if (err_cnt > 0) begin
-            $display("\n%0t TEST FAILED",$realtime);
-            $display("Error count = %d\n", err_cnt);
-        end else
-            $display("\n%0t TEST PASSED\n", $realtime);
+        for (i = 0; i < 1500; i = i + 1) begin
+            for (bit_number = 0; bit_number < INPUT_RATE*DATA_WIDTH; bit_number = bit_number + 1) begin
+                next_random();
+                data_wr[bit_number] = random_state[0];
+            end
+            for (port_number = 0; port_number < INPUT_RATE; port_number = port_number + 1) begin
+                next_random();
+                wr_en[port_number] = random_state[0];
+                index_wr[port_number*INDEX_WIDTH +: INDEX_WIDTH] = random_state >> 1;
+            end
+            for (port_number = 0; port_number < OUTPUT_RATE; port_number = port_number + 1) begin
+                next_random();
+                index_rd[port_number*INDEX_WIDTH +: INDEX_WIDTH] = random_state;
+            end
+            next_random();
+            rd_en = random_state[0];
+            step();
+            if (i % 251 == 0) reset_table();
+        end
+        $display("ALL TESTS PASSED: %0d transactions", transactions);
         $finish;
     end
-
-    initial begin
-        #((TB_SIM_TIMEOUT)* 1ms);
-        $display("\n%0t TEST FAILED", $realtime);
-        $display("SIM TIMEOUT!\n");
-        $finish;
-    end
-
 endmodule
-
