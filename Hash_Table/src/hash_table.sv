@@ -1,188 +1,170 @@
-`timescale 1ns / 1ps
-//////////////////////////////////////////////////////////////////////////////////
-// Create Date: 18/04/2025 1:15 AM
-// Last Update: 03/05/2025 6:20 PM
-// Module Name: Hash Table
-// Author: https://www.linkedin.com/in/wei-yet-ng-065485119/
-// Description: Support coliision method of Chaining and Hash Algorithm FNV1A and SHA1  
-// Additional Comments: .
-// 
-//////////////////////////////////////////////////////////////////////////////////
-
 module hash_table #(
     parameter KEY_WIDTH = 32,
     parameter VALUE_WIDTH = 32,
-    parameter TOTAL_INDEX = 8,  // Total index of the hash table
-    parameter CHAINING_SIZE = 4, // Number of chains for SINGLE_CYCLE_CHAINING and MULTI_STAGE_CHAINING only
-    parameter COLLISION_METHOD = "MULTI_STAGE_CHAINING",  // "MULTI_STAGE_CHAINING", "LINEAR_PROBING" 
-    parameter HASH_ALGORITHM = "MODULUS"  // "MODULUS", "SHA1", "FNV1A"
+    parameter TOTAL_INDEX = 8,
+    parameter CHAINING_SIZE = 4,
+    parameter COLLISION_METHOD = "MULTI_STAGE_CHAINING",
+    parameter HASH_ALGORITHM = "MODULUS"
 )(
-
     input wire clk,
     input wire rst,
     input wire [KEY_WIDTH-1:0] key_in,
     input wire [VALUE_WIDTH-1:0] value_in,
-    input wire [1:0] op_sel, // 00: Insert, 01: Delete, 10: Search
+    input wire [1:0] op_sel,
     input wire op_en,
     output reg [VALUE_WIDTH-1:0] value_out,
     output reg op_done,
-    output reg op_error, // FULL when insert FAIL, KEY_NOT_FOUND when delete or search FAIL
-    output reg [$clog2(CHAINING_SIZE-1)-1:0] collision_count 
+    output reg op_error,
+    output reg [((CHAINING_SIZE < 2) ? 1 : $clog2(CHAINING_SIZE+1))-1:0] collision_count
 );
+    localparam COUNT_WIDTH = (CHAINING_SIZE < 2) ? 1 : $clog2(CHAINING_SIZE+1);
+    localparam INDEX_WIDTH = (TOTAL_INDEX < 2) ? 1 : $clog2(TOTAL_INDEX);
+    localparam IDLE = 2'd0, SEARCH = 2'd1, COMPLETE = 2'd2;
+    reg [1:0] state;
+    reg [KEY_WIDTH-1:0] request_key;
+    reg [VALUE_WIDTH-1:0] request_value;
+    reg [1:0] request_op;
+    reg [INDEX_WIDTH-1:0] bucket;
+    reg [COUNT_WIDTH-1:0] cursor;
+    reg [KEY_WIDTH*CHAINING_SIZE-1:0] keys [0:TOTAL_INDEX-1];
+    reg [VALUE_WIDTH*CHAINING_SIZE-1:0] values [0:TOTAL_INDEX-1];
+    reg [COUNT_WIDTH-1:0] counts [0:TOTAL_INDEX-1];
+    wire at_end = cursor == counts[bucket];
+    wire found = cursor < counts[bucket] && keys[bucket][cursor*KEY_WIDTH +: KEY_WIDTH] == request_key;
+    wire append_entry = state == SEARCH && request_op == 0 && at_end && counts[bucket] < CHAINING_SIZE;
+    wire write_entry = append_entry || (state == SEARCH && request_op == 0 && found);
+    wire delete_entry = state == SEARCH && request_op == 1 && found;
+    wire [INDEX_WIDTH-1:0] hash_index;
 
-    parameter CHAINING_SIZE_WIDTH = $clog2(CHAINING_SIZE+1); 
-    parameter INDEX_WIDTH = $clog2(TOTAL_INDEX);
-    
-    reg [2:0] current_state;
-    //reg [2:0] next_state;
-    reg [KEY_WIDTH*CHAINING_SIZE-1:0] hash_key_stored [0:TOTAL_INDEX-1];
-    reg [VALUE_WIDTH*CHAINING_SIZE-1:0] hash_value_stored [0:TOTAL_INDEX-1];
-    reg [CHAINING_SIZE_WIDTH-1:0] hash_chain_count [0:TOTAL_INDEX-1]; // for collision count
-    reg [CHAINING_SIZE_WIDTH-1:0] search_ptr; // for searching the key in the chain
-    reg [CHAINING_SIZE_WIDTH-1:0] next_search_ptr; // for searching the key in the chain
-    integer i;
-    
-    localparam  IDLE       = 3'b000;
-    localparam  SEARCH_KEY = 3'b001;
-    localparam  INSERT     = 3'b010;
-    localparam  DELETE     = 3'b011;
-    localparam  READ       = 3'b100;
-    localparam  OP_DONE    = 3'b101;
-
-    // Hash function selector
-    function integer get_hash_index;
-        input integer key;
-        reg [31:0] hash_value;
-        begin
-            if (HASH_ALGORITHM == "MODULUS")
-                hash_value = key % TOTAL_INDEX;
-            else // for future implentation of other hash algorithm
-                hash_value = key;
-                
-            get_hash_index = hash_value[INDEX_WIDTH-1:0];
+    generate
+        if (TOTAL_INDEX == 1) begin : single_bucket
+            assign hash_index = 0;
+        end else if ((TOTAL_INDEX & (TOTAL_INDEX - 1)) == 0) begin : binary_buckets
+            // Assignment truncates or zero-extends an unsigned key as needed.
+            assign hash_index = key_in;
+        end else begin : modulus_buckets
+            // Process all key bits using an INDEX_WIDTH+1-bit remainder.
+            // Before each stage remainder < TOTAL_INDEX, so one subtraction
+            // suffices after shifting in the next bit. No general divider.
+            localparam [INDEX_WIDTH:0] BUCKET_COUNT = TOTAL_INDEX;
+            wire [INDEX_WIDTH:0] remainder [0:KEY_WIDTH];
+            assign remainder[KEY_WIDTH] = 0;
+            genvar key_bit;
+            for (key_bit = 0; key_bit < KEY_WIDTH; key_bit = key_bit + 1) begin : stage
+                wire [INDEX_WIDTH:0] shifted = {remainder[key_bit+1][INDEX_WIDTH-1:0], key_in[key_bit]};
+                assign remainder[key_bit] = (shifted >= BUCKET_COUNT) ? shifted - BUCKET_COUNT : shifted;
+            end
+            assign hash_index = remainder[0][INDEX_WIDTH-1:0];
         end
-    endfunction
+    endgenerate
 
-    // Collision resolution method
-    always @ (posedge clk, posedge rst) begin
-        if(rst) begin
-            current_state <= IDLE;
-            search_ptr <= 0;
+    // Static slices infer bounded per-slot enables instead of variable-width
+    // barrel-shift write masks on entire packed buckets.
+    genvar bucket_number;
+    generate
+        for (bucket_number = 0; bucket_number < TOTAL_INDEX; bucket_number = bucket_number + 1) begin : storage
+            integer slot;
+            always @(posedge clk or posedge rst) begin
+                if (rst) begin
+                    keys[bucket_number] <= 0;
+                    values[bucket_number] <= 0;
+                    counts[bucket_number] <= 0;
+                end else if (bucket == bucket_number) begin
+                    if (append_entry) counts[bucket_number] <= counts[bucket_number] + 1'b1;
+                    else if (delete_entry) counts[bucket_number] <= counts[bucket_number] - 1'b1;
+                    for (slot = 0; slot < CHAINING_SIZE; slot = slot + 1) begin
+                        if (write_entry && cursor == slot) begin
+                            keys[bucket_number][slot*KEY_WIDTH +: KEY_WIDTH] <= request_key;
+                            values[bucket_number][slot*VALUE_WIDTH +: VALUE_WIDTH] <= request_value;
+                        end else if (delete_entry) begin
+                            if (slot == counts[bucket_number] - 1) begin
+                                keys[bucket_number][slot*KEY_WIDTH +: KEY_WIDTH] <= 0;
+                                values[bucket_number][slot*VALUE_WIDTH +: VALUE_WIDTH] <= 0;
+                            end else if (slot >= cursor && slot < counts[bucket_number] - 1) begin
+                                if (slot < CHAINING_SIZE - 1) begin
+                                    keys[bucket_number][slot*KEY_WIDTH +: KEY_WIDTH] <=
+                                        keys[bucket_number][(slot+1)*KEY_WIDTH +: KEY_WIDTH];
+                                    values[bucket_number][slot*VALUE_WIDTH +: VALUE_WIDTH] <=
+                                        values[bucket_number][(slot+1)*VALUE_WIDTH +: VALUE_WIDTH];
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    endgenerate
+
+    initial begin
+        if (KEY_WIDTH < 1 || VALUE_WIDTH < 1 || TOTAL_INDEX < 1 || CHAINING_SIZE < 1)
+            $fatal(1, "Hash Table parameters must be positive");
+        if (HASH_ALGORITHM != "MODULUS" || COLLISION_METHOD != "MULTI_STAGE_CHAINING")
+            $fatal(1, "Unsupported Hash Table algorithm or collision method");
+    end
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            state <= IDLE;
+            request_key <= 0;
+            request_value <= 0;
+            request_op <= 0;
+            bucket <= 0;
+            cursor <= 0;
             value_out <= 0;
             collision_count <= 0;
             op_done <= 0;
             op_error <= 0;
-            for (i = 0; i < TOTAL_INDEX; i++) begin
-               hash_key_stored[i] <= 0;
-               hash_value_stored[i] <= 0;
-               hash_chain_count[i] <= 0;
-            end
-        end else begin               
-            case(current_state)
+        end else begin
+            op_done <= 0;
+            op_error <= 0;
+            case (state)
                 IDLE: begin
                     if (op_en) begin
-                        case (op_sel)
-                            2'b00: current_state <= SEARCH_KEY; //INSERT 
-                            2'b01: current_state <= SEARCH_KEY; //DELETE
-                            2'b10: current_state <= SEARCH_KEY; //SEARCH
-                            default: begin 
-                                current_state <= OP_DONE;
-                                op_done <= 1;
-                                op_error <= 1; // Invalid operation
-                            end
-                        endcase
-                    end else begin
-                        current_state <= IDLE;
-                        op_done <= 0;
-                        op_error <= 0;
+                        request_key <= key_in;
+                        request_value <= value_in;
+                        request_op <= op_sel;
+                        // Preserve all key bits and unsigned modulo semantics.
+                        bucket <= hash_index;
+                        cursor <= 0;
+                        value_out <= 0;
+                        collision_count <= 0;
+                        state <= SEARCH;
                     end
-                    search_ptr <= 0;
-                    value_out <= 0;
-                    collision_count <= 0;
                 end
-    
-                INSERT: begin
-                        // Insert logic here
-                        hash_key_stored[get_hash_index(key_in)][search_ptr*KEY_WIDTH +: KEY_WIDTH] <= key_in;
-                        hash_value_stored[get_hash_index(key_in)][search_ptr*VALUE_WIDTH +: VALUE_WIDTH] <= value_in;
-                        hash_chain_count[get_hash_index(key_in)] <= hash_chain_count[get_hash_index(key_in)] + 1;
+                SEARCH: begin
+                    if (request_op == 2'b11) begin
                         op_done <= 1;
-                        op_error <= 0; // No error
-                        current_state <= OP_DONE;
-                end
-                
-                DELETE: begin
-                       // Delete logic here
-                       // Remove key and value from hash table
-                       // Shift the rest of the chain
-                       // use for loop instead                    
-                       for (i = 0; i < CHAINING_SIZE - 1; i++) begin
-                          if (i >= search_ptr) begin
-                             hash_key_stored[get_hash_index(key_in)][(i*KEY_WIDTH) +: KEY_WIDTH] <= hash_key_stored[get_hash_index(key_in)][((i+1)*KEY_WIDTH) +: KEY_WIDTH];
-                             hash_value_stored[get_hash_index(key_in)][(i*VALUE_WIDTH) +: VALUE_WIDTH] <= hash_value_stored[get_hash_index(key_in)][((i+1)*VALUE_WIDTH) +: VALUE_WIDTH];
-                          end else begin
-                             hash_key_stored[get_hash_index(key_in)][(i*KEY_WIDTH) +: KEY_WIDTH] <= {KEY_WIDTH{1'b0}};
-                             hash_value_stored[get_hash_index(key_in)][(i*VALUE_WIDTH) +: VALUE_WIDTH] <= {VALUE_WIDTH{1'b0}};
-                          end                              
-                       end
-                       hash_chain_count[get_hash_index(key_in)] <= hash_chain_count[get_hash_index(key_in)] - 1;
-                       current_state <= OP_DONE;
-                       op_done <= 1;
-                       op_error <= 0; // No error
-                end
-    
-                READ: begin
-                    // Search logic here
-                    // Return the value associated with the key
-                    value_out <= hash_value_stored[get_hash_index(key_in)] >> search_ptr*VALUE_WIDTH;
-                    collision_count <= hash_chain_count[get_hash_index(key_in)];
-                    current_state <= OP_DONE;
-                    op_done <= 1;
-                    op_error <= 0; // No error
-                end
-                
-                SEARCH_KEY: begin
-                     if (hash_chain_count[get_hash_index(key_in)] == 0) begin
-                        if(op_sel == 2'b00) begin
-                          current_state <= INSERT;
+                        op_error <= 1;
+                        state <= COMPLETE;
+                    end else if (at_end) begin
+                        // End-of-chain is checked before reading a candidate slot.
+                        collision_count <= counts[bucket];
+                        if (request_op == 0 && counts[bucket] < CHAINING_SIZE) begin
+                            collision_count <= counts[bucket] + 1'b1;
                         end else begin
-                            collision_count <= 0;
-                            op_done <= 1;
-                            op_error <= 1; // KEY_NOT_FOUND error
-                            current_state <= OP_DONE;
+                            op_error <= 1;
                         end
-                    end else if(key_in == hash_key_stored[get_hash_index(key_in)][search_ptr*KEY_WIDTH +: KEY_WIDTH]) begin
-                        if(op_sel == 2'b00) begin
-                            current_state <= INSERT;
-                        end else if (op_sel == 2'b01) begin
-                            current_state <= DELETE;
-                        end else if (op_sel == 2'b10) begin
-                            current_state <= READ;
-                        end
-                    end else if (search_ptr == hash_chain_count[get_hash_index(key_in)]) begin
-                        if(op_sel == 2'b00 & (hash_chain_count[get_hash_index(key_in)] < CHAINING_SIZE)) begin
-                            current_state <= INSERT;
-                        end else begin
-                            collision_count <= CHAINING_SIZE;
-                            op_done <= 1;
-                            op_error <= 1; // KEY_NOT_FOUND error
-                            current_state <= OP_DONE;
-                        end
+                        op_done <= 1;
+                        state <= COMPLETE;
+                    end else if (found) begin
+                        collision_count <= counts[bucket];
+                        case (request_op)
+                            0: begin end // storage updates without changing occupancy
+                            1: begin
+                                collision_count <= counts[bucket] - 1'b1;
+                            end
+                            2: value_out <= values[bucket][cursor*VALUE_WIDTH +: VALUE_WIDTH];
+                            default: op_error <= 1;
+                        endcase
+                        op_done <= 1;
+                        state <= COMPLETE;
                     end else begin
-                        current_state <= SEARCH_KEY;
-                        search_ptr <= search_ptr + 1;
+                        cursor <= cursor + 1'b1;
                     end
                 end
-                
-                OP_DONE: begin
-                    current_state <= IDLE;
-                    op_done <= 0;
-                    op_error <= 0;
-                end
-    
-                default: current_state <= IDLE;
+                COMPLETE: state <= IDLE;
+                default: state <= IDLE;
             endcase
         end
     end
-
 endmodule

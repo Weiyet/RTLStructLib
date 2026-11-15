@@ -99,9 +99,19 @@ Include file list <Data structure>/src/rtl_list.f to your simulation or project.
 
 From Linux/WSL, run `make check` for the default real-RTL benches or `make ci`
 for the complete verified regressions, synthesis and mapped-netlist checks.
-Select blocks with `MODULES="systolic list circular singly doubly lifo fifo table"`.
-The current CI scope covers these eight modules; see the
+Select blocks with `MODULES="systolic list circular singly doubly lifo fifo table hash"`.
+The current CI scope covers these nine modules; see the
 [verification guide](Utils/ci/README.md) for dependencies, check counts and reports.
+
+### Integration Changes Since v1.2
+
+- FIFO defaults to depth 16; asynchronous depths must be powers of two. Full/empty
+  both assert during reset and local reset release to block traffic. See [FIFO](FIFO/README.md).
+- Table defines write-first reads and highest-port write priority. Single-entry
+  tables use a one-bit address; invalid reads return zero. See [Table](Table/README.md).
+- Hash Table captures requests, updates duplicate keys in place, and preserves
+  neighboring entries on deletion. Its count port now represents the full bucket
+  capacity (three bits for capacity four). See [Hash Table](Hash_Table/README.md).
 
 ### Work in Progress/Future Works 🚀
 🔹 Implementing Hash Binary Tree, AVL Tree and more and more <br>

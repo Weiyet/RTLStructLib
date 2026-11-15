@@ -13,8 +13,14 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "Utils/tb"))
 from check_results import validate_results
 
-BLOCKS = {"fifo": ("FIFO", "fifo", 5), "table": ("Table", "table_top", 5)}
+BLOCKS = {"fifo": ("FIFO", "fifo", 5), "table": ("Table", "table_top", 5),
+          "hash": ("Hash_Table", "hash_table", 6)}
 CONFIGS = {
+    "hash": [{}, dict(TOTAL_INDEX=1, CHAINING_SIZE=1, KEY_WIDTH=1, VALUE_WIDTH=1),
+             dict(TOTAL_INDEX=2, CHAINING_SIZE=2, KEY_WIDTH=3, VALUE_WIDTH=8),
+             dict(TOTAL_INDEX=3, CHAINING_SIZE=3, KEY_WIDTH=17, VALUE_WIDTH=9),
+             dict(TOTAL_INDEX=5, CHAINING_SIZE=2, KEY_WIDTH=40, VALUE_WIDTH=40),
+             dict(TOTAL_INDEX=1, CHAINING_SIZE=5, KEY_WIDTH=8, VALUE_WIDTH=17)],
     "table": [{}, dict(TABLE_SIZE=1, DATA_WIDTH=1, INPUT_RATE=1, OUTPUT_RATE=1),
               dict(TABLE_SIZE=3, DATA_WIDTH=17, INPUT_RATE=3, OUTPUT_RATE=2),
               dict(TABLE_SIZE=8, DATA_WIDTH=40, INPUT_RATE=2, OUTPUT_RATE=3),
@@ -103,6 +109,19 @@ def main():
                                             {"ASYNC": 2}, {"RD_BUFFER": 2})):
                 run(module, "sv", config, 123, 0, root / f"invalid-{index}",
                     "power of two" if "DEPTH" in config else "must be")
+                negatives += 1
+        if module == "hash":
+            for parameter in ("HASH_ALGORITHM", "COLLISION_METHOD"):
+                fixture = root / f"invalid-{parameter}.sv"
+                fixture.write_text(f'module tb; hash_table #(.{parameter}("BAD")) dut(); endmodule\n')
+                binary = root / f"invalid-{parameter}.sim"
+                code, output = invoke(["iverilog", "-g2012", "-s", "tb", "-o", str(binary),
+                                       str(fixture), str(ROOT / "Hash_Table/src/hash_table.sv")],
+                                      root / f"invalid-{parameter}-compile.log")
+                assert code == 0, output
+                code, output = invoke(["vvp", str(binary)], root / f"invalid-{parameter}.log")
+                assert code != 0 and "Unsupported Hash Table" in output, output
+                print(f"PASS hash: rejected unsupported {parameter}", flush=True)
                 negatives += 1
     print(f"All {len(cases)} real-RTL runs and {negatives} failure-status checks passed.")
 
