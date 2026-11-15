@@ -1,182 +1,138 @@
+"""Cycle-accurate port-only checks against a Python stack."""
+import os
 import random
-#import asyncio
+
 import cocotb
-from cocotb.triggers import Timer, RisingEdge, ReadOnly
-from cocotb.clock import Clock
-from cocotb_bus.drivers import BusDriver
-from cocotb_bus.monitors import BusMonitor
+from cocotb.triggers import Timer
 
-DEPTH = 12 # DUT parameter
-DATA_WIDTH = 8 # DUT paramter
-TEST_WEIGHT = 1 # TB multiplier for stimulus injected
-CLK_PERIOD = 20 # TB clk generator
-#SIM_TIMEOUT = 100000; // TB simulation time out
-MAX_DATA = 2**DATA_WIDTH - 1
-err_cnt = 0
 
-# lifo #(
-# .DEPTH(DEPTH), 
-# .DATA_WIDTH(DATA_WIDTH)) DUT (
-#     /*input wire*/ .clk(clk),
-#     /*input wire*/ .rst(rst),
-#     /*input wire [DATA_WIDTH-1:0]*/ .data_wr(data_wr),
-#     /*input wire*/ .wr_en(wr_en),
-#     /*output reg*/ .lifo_full(lifo_full),
-#     /*output reg [DATA_WIDTH-1:0]*/ .data_rd(data_rd),
-#     /*input wire*/ .rd_en(rd_en),
-#     /*output wire*/ .lifo_empty(lifo_empty));
-
-class OutputDriver(BusDriver):
-    _signals = ["wr_en", "rd_en", "data_wr"] #dut.wr_en ; dut.rd_en; dut.data_wr
-
-    def __init__(self, dut, name, clk):
-        BusDriver.__init__(self, dut, name, clk)
-        self.bus.wr_en.value = 0
-        self.bus.rd_en.value = 0
+class Stack:
+    def __init__(self, dut):
         self.dut = dut
-        self.clk = clk
+        self.depth = int(dut.DEPTH.value)
+        self.width = len(dut.data_wr)
+        self.mask = (1 << self.width) - 1
+        self.items = []
+        self.output = 0
+        self.cycles = 0
+        self.limit = int(os.getenv("TB_TIMEOUT_CYCLES", "20000"))
+        self.random = random.Random(int(os.getenv("TB_SEED", "123")))
 
-    async def _driver_send(self, op_sel, op_count):
-        match op_sel:
-            case 0:
-                wr_data_array = []
-                for i in range (op_count):
-                    wr_data_array.append(random.randint(0,MAX_DATA))
-                await self.lifo_write(wr_data_array)
-            case 1:
-                await self.lifo_read(op_count)
-            case 2:
-                wr_data_array = []
-                for i in range (op_count):
-                    wr_data_array.append(random.randint(0,MAX_DATA))
-                await self.lifo_read_write_simul(wr_data_array)
+    def check(self):
+        assert int(self.dut.lifo_empty.value) == (not self.items), self.items
+        assert int(self.dut.lifo_full.value) == (len(self.items) == self.depth), self.items
+        assert int(self.dut.data_rd.value) == self.output, (
+            self.cycles, self.output, int(self.dut.data_rd.value))
 
-    async def lifo_write(self, wr_data_array):
-        data_w = 0
-        while len(wr_data_array) != 0:
-            await RisingEdge(self.clk)
-            await Timer (1, units = 'ns')
-            self.bus.wr_en.value = 1
-            data_w = wr_data_array.pop()
-            self.bus.data_wr.value = data_w
-            self.dut._log.info("Driver: Writting Data = %d",data_w)
-        await RisingEdge(self.clk)
-        self.bus.wr_en.value = 0
-        
-    async def lifo_read(self,op_count):
-        for i in range(op_count):
-            await RisingEdge(self.clk)
-            self.bus.rd_en.value = 1
-            self.dut._log.info("Driver: Reading Data = %d",)
-        await RisingEdge(self.clk)
-        await Timer (1, units='ns')
-        self.bus.rd_en.value = 0
+    async def step(self, push=0, pop=0, value=0):
+        self.cycles += 1
+        assert self.cycles <= self.limit, "LIFO timed out"
+        value &= self.mask
+        self.dut.clk.value = 0
+        self.dut.wr_en.value = push
+        self.dut.rd_en.value = pop
+        self.dut.data_wr.value = value
+        await Timer(5, units="ns")
+        self.check()  # registered output must not change before the active edge
+        if push and pop:
+            self.output = value
+        elif push and len(self.items) < self.depth:
+            self.items.append(value)
+        elif pop and self.items:
+            self.output = self.items.pop()
+        self.dut.clk.value = 1
+        await Timer(5, units="ns")
+        self.check()
 
-    async def lifo_read_write_simul(self,wr_data_array):
-        data_w = 0
-        while len(wr_data_array) != 0:
-            await RisingEdge(self.clk)
-            await Timer (1, units = 'ns')
-            self.bus.rd_en.value = 1
-            self.bus.wr_en.value = 1
-            data_w = wr_data_array.pop()
-            self.bus.data_wr.value = data_w    
-            self.dut._log.info("Driver: Simultanenous read write, data = %d",data_w)
-        await RisingEdge(self.clk)
-        await Timer (1, units='ns')      
-        self.bus.rd_en.value = 0
-        self.bus.wr_en.value = 0
+    async def reset(self):
+        self.dut.clk.value = 0
+        self.dut.rst.value = 0
+        self.dut.wr_en.value = 1
+        self.dut.rd_en.value = 1
+        self.dut.data_wr.value = self.mask
+        await Timer(2, units="ns")
+        self.dut.rst.value = 1
+        self.items.clear()
+        self.output = 0
+        await Timer(2, units="ns")
+        self.check()  # asynchronous reset with the clock stopped
+        self.dut.clk.value = 1
+        await Timer(5, units="ns")
+        self.check()
+        self.dut.clk.value = 0
+        self.dut.rst.value = 0
+        await self.step()
 
-class InputMonitor(BusMonitor):
-    _signals = ["wr_en","rd_en","lifo_empty","lifo_full","data_rd","data_wr"]
-
-    def __init__(self, dut, name, clk, reset):
-        BusMonitor.__init__(self, dut, name, clk, reset)
-        self.clk = clk
-        self.reset = reset
-        self.dut = dut
-
-    async def _monitor_recv(self):
-        global err_cnt
-        lifo_expected = []
-        rd_en_buf = 0
-        wr_en_buf = 0
-        data_wr_buf = 0
-        while True:
-             await RisingEdge(self.clock)
-             await Timer(3,units='ns') 
-             await ReadOnly()
-
-             if self.reset.value == 1:
-                 rd_en_buf = 0
-                 wr_en_buf = 0
-                 data_wr_buf = 0
-                 continue
-
-             if(rd_en_buf == 1 and wr_en_buf == 1):
-                if(self.bus.data_rd.value == data_wr_buf):
-                    self.dut._log.info("Monitor: Simultaneous Data read/write, ACT = %d, EXP = %d, FIFO entry = %d", self.bus.data_rd.value, data_wr_buf, len(lifo_expected))
-             elif(wr_en_buf and len(lifo_expected) != DEPTH): 
-                lifo_expected.append(data_wr_buf)
-                self.dut._log.info("Monitor: Data write = %d, FIFO entry = %d", data_wr_buf, len(lifo_expected))
-             elif(rd_en_buf == 1 and len(lifo_expected) != 0):
-                lifo_expected.pop()
-                self.dut._log.info("Monitor: Data read = %d, FIFO entry = %d", self.bus.data_rd.value, len(lifo_expected))
-
-             if(len(lifo_expected) == 0):
-                if(self.bus.lifo_empty.value):
-                    self.dut._log.info("Monitor: LIFO is empty, lifo_full flag is asserted correctly")
-                else:
-                    self.dut._log.error("Monitor: LIFO is empty, but lifo_full flag is not asserted")
-                    err_cnt += 1
-             elif(self.bus.lifo_empty.value): 
-                    self.dut._log.error("Monitor: LIFO is not empty, but lifo_empty flag is asserted")
-             
-             if(len(lifo_expected) == DEPTH):
-                if(self.bus.lifo_full.value):
-                    self.dut._log.info("Monitor: LIFO is full, lifo_full flag is asserted correctly")
-                else:
-                    self.dut._log.error("Monitor: LIFO is full, but lifo_full flag is not asserted")
-                    err_cnt += 1
-             elif(self.bus.lifo_full.value):
-                self.dut._log.error("Monitor: LIFO is not full, but lifo_full flag is asserted")
-
-             rd_en_buf = int(self.bus.rd_en.value)
-             wr_en_buf = int(self.bus.wr_en.value)
-             data_wr_buf = int(self.bus.data_wr.value)
-
-
-async def dut_init(dut):
-    global DEPTH 
-    global DATA_WIDTH
-    global MAX_DATA
-    DEPTH = dut.DEPTH.value 
-    DATA_WIDTH = dut.DATA_WIDTH.value
-    MAX_DATA = 2**DATA_WIDTH - 1
-    await cocotb.start(Clock(dut.clk, CLK_PERIOD, units="ns").start())
-    dut.data_wr.value = 0
-    dut.rd_en.value = 0
-    dut.wr_en.value = 0
-    dut.rst.value = 1
-    await(Timer(100,'ns'))
-    dut.rst.value = 0
-    await(Timer(100,'ns'))
-    
 
 @cocotb.test()
-async def lifo_rand_op_test(dut):
-    await dut_init(dut)
-    driver = OutputDriver(dut, None, dut.clk) #set name='None', refer to Bus class
-    monitor = InputMonitor(dut, None, dut.clk, dut.rst)
-    cocotb.log.info("SEED NUMBER = %d",cocotb.RANDOM_SEED)
-    i = DEPTH
-    lifo_expected = []
-    while(i >= 0):
-        op_sel = random.randint(0,1)
-        op_count = random.randint(1,5)
-        i = i - op_count      
-        await driver._driver_send(op_sel,op_count)
-        await Timer(CLK_PERIOD,'ns')
-        if (err_cnt > 0):
-            cocotb.log.error("Errors count = %d",err_cnt)
-            cocotb.result.test_fail()
+async def test_empty_and_invalid(dut):
+    stack = Stack(dut)
+    await stack.reset()
+    for _ in range(5):
+        await stack.step(pop=1)
+        await stack.step()
+    await stack.step(1, 1, stack.mask)
+    await stack.step(pop=1)
+
+
+@cocotb.test()
+async def test_full_drain_and_wrap(dut):
+    stack = Stack(dut)
+    await stack.reset()
+    for _ in range(5):
+        for _ in range(stack.depth):
+            await stack.step(push=1, value=stack.random.getrandbits(stack.width))
+        for _ in range(3):
+            await stack.step(push=1, value=stack.mask)
+        for _ in range(stack.depth + 2):
+            await stack.step(pop=1)
+
+
+@cocotb.test()
+async def test_bypass_at_every_occupancy(dut):
+    stack = Stack(dut)
+    await stack.reset()
+    for occupancy in range(stack.depth + 1):
+        for value in (0, stack.mask, stack.random.getrandbits(stack.width)):
+            await stack.step(1, 1, value)
+            await stack.step()
+        if occupancy < stack.depth:
+            await stack.step(push=1, value=occupancy)
+    for _ in range(stack.depth):
+        await stack.step(pop=1)
+
+
+@cocotb.test()
+async def test_reset_discards_entries(dut):
+    stack = Stack(dut)
+    await stack.reset()
+    for occupancy in (1, stack.depth // 2, stack.depth):
+        for _ in range(occupancy):
+            await stack.step(push=1, value=stack.mask)
+        await stack.reset()
+        await stack.step(pop=1)
+        await stack.step(push=1, value=0)
+        await stack.step(pop=1)
+
+
+@cocotb.test()
+async def test_all_data_bits(dut):
+    stack = Stack(dut)
+    await stack.reset()
+    for bit in range(stack.width):
+        await stack.step(push=1, value=1 << bit)
+        await stack.step(pop=1)
+        await stack.step(1, 1, stack.mask ^ (1 << bit))
+
+
+@cocotb.test()
+async def test_random_operations(dut):
+    stack = Stack(dut)
+    await stack.reset()
+    for cycle in range(1500):
+        await stack.step(stack.random.randrange(2), stack.random.randrange(2),
+                         stack.random.getrandbits(stack.width))
+        if cycle % 211 == 0:
+            await stack.reset()
+    while stack.items:
+        await stack.step(pop=1)

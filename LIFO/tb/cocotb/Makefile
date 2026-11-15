@@ -1,43 +1,26 @@
+.DEFAULT_GOAL := check
 SIM ?= icarus
 TOPLEVEL_LANG ?= verilog
-WAVES ?= 1 #set 1 to enable waveform dump. 
-
-PWD=$(shell pwd)
-
-#export PYTHONPATH := $(PWD)/../model:$(PYTHONPATH)
-
-VERILOG_SOURCES = $(PWD)/../../src/lifo.sv
-
-# DUT Top
+WAVES ?= 0
+SEED ?= 123
+DATA_WIDTH ?= 8
+DEPTH ?= 12
+TB_TIMEOUT_CYCLES ?= 20000
+PARAMETERS = DATA_WIDTH DEPTH
+RTL_SOURCES ?= $(abspath ../../src/lifo.sv)
+VERILOG_SOURCES = $(RTL_SOURCES)
 TOPLEVEL = lifo
-# top python file
-MODULE   = tb
-
-#use , separtor to run multiple TESTCASE, by default all @cocotb.test will be run
-#TESTCASE = lifo_rand_op_test
-TESTCASE = lifo_rand_op_test
-
-COMPILE_ARGS = -Plifo.DEPTH=12 # DUT parameter #"-p" iverilog command flags
-COMPILE_ARGS += -Plifo.DATA_WIDTH=8 # DUT parameter #"-p" iverilog command flags
-#run make clean before running with new parameter.
-
-#Set RANDOM_SEED number
-#PLUSARGS = +seed=1716033254
+MODULE = tb
+COCOTB_TEST_MODULES = $(MODULE)
+COMPILE_ARGS += $(foreach param,$(PARAMETERS),-P$(TOPLEVEL).$(param)=$($(param))) $(TB_COMPILE_ARGS)
+export TB_SEED = $(SEED)
+export TB_TIMEOUT_CYCLES
+export RANDOM_SEED = $(SEED)
+export COCOTB_RANDOM_SEED = $(SEED)
 COCOTB_HDL_TIMEUNIT = 1ns
 COCOTB_HDL_TIMEPRECISION = 1ps
-
-ifeq ($(SIM), icarus) 
-   $(shell echo 'module iverilog_dump();' > iverilog_dump.v)
-   $(shell echo 'initial begin' >> iverilog_dump.v)
-   $(shell echo '    $$dumpfile("$(TOPLEVEL).vcd");' >> iverilog_dump.v)
-   $(shell echo '    $$dumpvars(0, $(TOPLEVEL));' >> iverilog_dump.v)
-   $(shell echo '    $$dumpvars(0, $(TOPLEVEL));' >> iverilog_dump.v)
-   $(shell echo 'end' >> iverilog_dump.v)
-   $(shell echo 'endmodule' >> iverilog_dump.v)
-   VERILOG_SOURCES += $(PWD)/iverilog_dump.v
-   COMPILE_ARGS += -s iverilog_dump  
-endif
-
+SIM_BUILD ?= sim_build
 include $(shell cocotb-config --makefiles)/Makefile.sim
-
-
+.PHONY: check
+check: sim
+	python3 ../../../Utils/tb/check_results.py $(COCOTB_RESULTS_FILE)

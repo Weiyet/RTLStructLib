@@ -6,12 +6,13 @@ module lifo #(
     input wire rst,
     input wire [DATA_WIDTH-1:0] data_wr,
     input wire wr_en,
-    output reg lifo_full,
+    output wire lifo_full,
     output reg [DATA_WIDTH-1:0] data_rd,
     input wire rd_en,
     output wire lifo_empty
 );
-    localparam CNTR_WIDTH = $clog2(DEPTH);
+    // Occupancy includes DEPTH itself, even for a power-of-two capacity.
+    localparam CNTR_WIDTH = (DEPTH < 2) ? 1 : $clog2(DEPTH + 1);
    
     reg [CNTR_WIDTH-1:0] pointer;
     reg [DATA_WIDTH-1:0] lifo_stored [DEPTH-1:0];
@@ -59,19 +60,6 @@ module lifo #(
 
     // flag
     assign lifo_empty = pointer ==  {CNTR_WIDTH{1'b0}};
-    always @ (posedge clk, posedge rst) begin
-        if(rst) begin
-            lifo_full <= 1'b0;
-        end else if(rd_op) begin
-            lifo_full <= 1'b0;
-        end else if(pointer == (DEPTH-1) & wr_op) begin
-            lifo_full <= 1'b1;
-        end
-    end
-    
-    // assign lifo_full = pointer == (DEPTH); 
-    // can use this as flag and modify read cond when lifo is full
-    // if lifo_full : data_rd <= (lifo_stored[pointer-1]) else data_rd <= lifo_stored[pointer]
-    //              : pointer <= pointer - 2             else pointer <= pointer <= pointer -1
+    assign lifo_full = pointer == DEPTH;
     
 endmodule

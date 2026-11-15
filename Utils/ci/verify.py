@@ -21,6 +21,8 @@ from check_results import validate_results
 
 
 MODULES = {
+    "lifo": ("LIFO", "lifo", 6, ("lifo.sv",),
+             "LIFO/tb/support/regress_rtl.py", 31, 2),
     "systolic": ("Systolic_Array", "systolic_array_top", 12,
                  ("pe.sv", "systolic_array.sv", "systolic_array_top.sv"),
                  "Systolic_Array/tb/support/regress_rtl.py", 40, 0),
@@ -54,6 +56,11 @@ class Job:
 
 
 def hardware_configs(module):
+    if module == "lifo":
+        return [({}, "default"), ({"DEPTH": 1, "DATA_WIDTH": 1}, "single"),
+                ({"DEPTH": 5, "DATA_WIDTH": 17}, "odd"),
+                ({"DEPTH": 8, "DATA_WIDTH": 8}, "power-two"),
+                ({"DEPTH": 33, "DATA_WIDTH": 8}, "wide-pool")]
     if module == "systolic":
         return [({}, "default")]
     if module == "list":
@@ -129,7 +136,7 @@ def plan_jobs(suite, selected, output, seed):
                 jobs.append(Job(module, "synthesis", label, command,
                                 output / module / "synthesis" / label, "synthesis",
                                 [synth_log, netlist], timeout=300))
-                if module in ("singly", "doubly") and suite in ("netlist", "ci") and label != "wide-pool":
+                if module in ("singly", "doubly", "lifo") and suite in ("netlist", "ci") and label != "wide-pool":
                     command = make_command(module, "sv", "netlist_sim", build, config, seed)
                     command.append("SKIP_SYNTH=1")
                     jobs.append(Job(module, "netlist", label, command,
@@ -270,11 +277,11 @@ def main(argv=None):
     parser.add_argument("--seed", type=int, default=123)
     parser.add_argument("--list", action="store_true", help="Show the selected checks without running them")
     options = parser.parse_args(argv)
-    selected = list(dict.fromkeys(options.selected or (list(MODULES) if options.suite != "netlist" else ["singly", "doubly"])))
+    selected = list(dict.fromkeys(options.selected or (list(MODULES) if options.suite != "netlist" else ["singly", "doubly", "lifo"])))
     if options.jobs < 1:
         parser.error("--jobs must be positive")
-    if options.suite == "netlist" and any(name not in ("singly", "doubly") for name in selected):
-        parser.error("Mapped-netlist plans currently cover singly and doubly only")
+    if options.suite == "netlist" and any(name not in ("singly", "doubly", "lifo") for name in selected):
+        parser.error("Mapped-netlist plans currently cover singly, doubly and lifo only")
     output = options.output.resolve()
     jobs = plan_jobs(options.suite, selected, output, options.seed)
     if options.list:

@@ -57,7 +57,7 @@ pip install cocotb-bus
 
 1️⃣ Clone the Repository <br> 
 ``` bash  
-git clone https://github.com/Weiyet/RTL_Data_Structure.git  
+git clone https://github.com/Weiyet/RTLStructLib.git
 ```
 
 2️⃣ Directory Structure of Each Data Structure Module <br> 
@@ -99,8 +99,8 @@ Include file list <Data structure>/src/rtl_list.f to your simulation or project.
 
 From Linux/WSL, run `make check` for the default real-RTL benches or `make ci`
 for the complete verified regressions, synthesis and mapped-netlist checks.
-Select blocks with `MODULES="systolic list circular singly doubly"`.
-The current CI scope covers these five modules; see the
+Select blocks with `MODULES="systolic list circular singly doubly lifo"`.
+The current CI scope covers these six modules; see the
 [verification guide](Utils/ci/README.md) for dependencies, check counts and reports.
 
 ### Work in Progress/Future Works 🚀

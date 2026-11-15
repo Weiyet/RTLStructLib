@@ -1,114 +1,61 @@
-# LIFO (Stack) 
+# LIFO (Stack)
 
-A configurable LIFO (Last-In-First-Out) buffer implementation in Verilog. This module implements a stack-like behavior where the last element written is the first one to be read out. The design includes bypass functionality for simultaneous read/write operations.
+A single-clock, synthesizable SystemVerilog stack with a registered read output
+and a simultaneous read/write bypass. Source: `src/lifo.sv`.
 
-## Features
+## Parameters and interface
 
-- Configurable data width and depth
-- Single clock domain operation
-- Full and empty status flags
-- Bypass path for simultaneous read/write
-- Registered read output
-- Automatic pointer management
-- Parameterized design for easy customization
+| Parameter | Default | Supported values |
+|---|---|---|
+| `DEPTH` | 12 | Positive integer, including 1 and non-powers of two |
+| `DATA_WIDTH` | 8 | Positive integer |
 
-## Parameters
+Inputs are `clk`, active-high asynchronous `rst`, `wr_en`, `rd_en`, and
+`data_wr[DATA_WIDTH-1:0]`. Outputs are `lifo_full`, `lifo_empty`, and
+`data_rd[DATA_WIDTH-1:0]`.
 
-| Parameter    | Description                                      | Default |
-|-------------|--------------------------------------------------|---------|
-| DEPTH       | Number of entries in the LIFO                     | 12      |
-| DATA_WIDTH  | Width of each data entry                         | 8       |
+## Clock-edge behavior
 
-## Interface Signals
+| wr_en | rd_en | Action at the rising edge |
+|---|---|---|
+| 0 | 0 | Hold stack and output |
+| 1 | 0 | Push if not full; otherwise ignore |
+| 0 | 1 | Pop into `data_rd` if not empty; otherwise hold output |
+| 1 | 1 | Register `data_wr` into `data_rd`; leave stack unchanged |
 
-| Signal      | Direction | Width         | Description                                    |
-|-------------|-----------|---------------|------------------------------------------------|
-| clk         | Input     | 1            | System clock                                   |
-| rst         | Input     | 1            | Active high reset                              |
-| data_wr     | Input     | DATA_WIDTH   | Data input for writing                        |
-| wr_en       | Input     | 1            | Write enable signal                           |
-| lifo_full   | Output    | 1            | LIFO full indicator                           |
-| data_rd     | Output    | DATA_WIDTH   | Data output from reading                      |
-| rd_en       | Input     | 1            | Read enable signal                            |
-| lifo_empty  | Output    | 1            | LIFO empty indicator                          |
+Bypass works at every occupancy, including full and empty. It does not replace
+the stored top entry. Both pop and bypass outputs become valid after the
+sampling edge; bypass is not combinational. Push and idle cycles hold the last
+read output.
 
-## Usage Example
+The occupancy register represents **0 through DEPTH**, so power-of-two stacks
+retain every entry. Flags decode occupancy and reflect the state after each
+edge. Reset immediately clears occupancy, stored entries and output. Deassert
+reset synchronously to `clk` in the integrating design.
 
-```verilog
-// Instantiate a 16-deep, 32-bit wide LIFO
-lifo #(
-    .DEPTH(16),
-    .DATA_WIDTH(32)
-) lifo_inst (
-    .clk(system_clock),
-    .rst(reset),
-    .data_wr(write_data),
-    .wr_en(write_enable),
-    .lifo_full(full_flag),
-    .data_rd(read_data),
-    .rd_en(read_enable),
-    .lifo_empty(empty_flag)
-);
+Storage uses resettable registers; this implementation does not promise BRAM
+inference. There is no independent read clock or ready/valid interface.
+
+## Verification
+
+Run in Linux/WSL with Icarus, Yosys, GNU Make and the pinned cocotb dependencies
+in `Utils/ci/requirements.txt`:
+
+```sh
+make -C LIFO/tb/sv sim DEPTH=8 DATA_WIDTH=17 SEED=123
+make -C LIFO/tb/cocotb DEPTH=1 DATA_WIDTH=1
+make ci MODULES=lifo
+make netlist MODULES=lifo
 ```
 
-## Operation Modes
+Clean the selected build directory before reusing it with different parameters.
+Both benches compare real DUT ports with independent stack scoreboards.
+Coverage includes empty/full rejection, complete drains, repeated wraps, bypass
+at every occupancy, asynchronous reset, output holding, every data bit, and
+seeded random traffic. The full suite runs 31 RTL configurations/seeds (six
+cocotb scenarios per run), two forced-timeout rejection checks, five synthesis
+configurations and four functional mapped-netlist simulations.
 
-The module supports three operation modes:
-
-1. **Write Operation (wr_op)**
-   - Activated when wr_en=1 and rd_en=0
-   - Data is written to current pointer location
-   - Pointer increments if not full
-
-2. **Read Operation (rd_op)**
-   - Activated when rd_en=1 and wr_en=0
-   - Data is read from (pointer-1) location
-   - Pointer decrements if not empty
-
-3. **Bypass Operation (bypass_op)**
-   - Activated when both wr_en=1 and rd_en=1
-   - Input data (data_wr) is directly passed to output (data_rd)
-   - Pointer remains unchanged
-
-## Design Notes
-
-1. **Pointer Management**:
-   - Single pointer tracks both read and write positions
-   - Increments on write, decrements on read
-   - Range: 0 to (DEPTH-1)
-
-2. **Memory Organization**:
-   - Stack-like structure with DEPTH entries
-   - Each entry is DATA_WIDTH bits wide
-   - Last written data is first to be read
-
-3. **Flag Generation**:
-   - Empty flag is combinatorial (pointer = 0)
-   - Full flag is registered (pointer = DEPTH-1)
-   - Flags prevent invalid operations
-
-## Reset Behavior
-
-On assertion of reset:
-- Pointer is cleared to zero
-- All memory locations are cleared
-- Full flag is deasserted
-- Output data is cleared
-- Empty flag becomes active
-
-## Timing Considerations
-
-1. All outputs except lifo_empty are registered
-2. Data is available on the next clock cycle after rd_en assertion
-3. Bypass operation provides data in the same clock cycle
-
-## Limitations
-
-- Single clock domain operation only
-- No protection against overflow/underflow if flags are ignored
-- DEPTH parameter should be at least 2 for proper operation
-- Simultaneous read/write operations bypass the stack memory
-
-## Alternative Implementation Note
-
-The commented code at the bottom of the module suggests an alternative implementation for full flag handling and read operations, which could be implemented if different timing behavior is needed.
+Set `WAVES=1` for SV VCD or cocotb FST output. Failures return nonzero through
+Make, and cocotb XML must contain passing, non-skipped tests. Existing UVM and
+pyUVM VIP are separate from this verified standalone suite.

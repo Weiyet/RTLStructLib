@@ -10,24 +10,24 @@ uses the Ubuntu 22.04 packages and the pinned Python requirements.
 make check                          # Default SV and cocotb benches
 make regress                        # Existing complete parameter/seed suites
 make synth                          # Xilinx synthesis and structural checks
-make netlist                        # Singly/Doubly mapped-netlist simulations
+make netlist                        # LIFO/Singly/Doubly mapped-netlist simulations
 make checkers                       # Fault/timeout rejection self-checks
 make ci                             # Complete hardware verification plan
 make test-tools                     # Runner failure-propagation tests
 make ci MODULES="singly doubly"      # Select modules
 ```
 
-Aliases are `systolic`, `list`, `circular`, `singly`, and `doubly`. Other blocks
+Aliases are `systolic`, `list`, `circular`, `singly`, `doubly`, and `lifo`. Other blocks
 and UVM/pyUVM VIP are outside this entry point's current scope.
 
 | Suite | Checks with all supported modules selected |
 |---|---|
-| `check` | 14 real-RTL runs: seven SV and seven cocotb; all three List sum methods |
-| `regress` | 189 real-RTL runs and eight forced-timeout rejection checks |
-| `synth` | 18 synthesis configurations, including single-node and odd dimensions |
-| `netlist` | Six synthesis builds followed by six functional netlist simulations |
-| `checkers` | 22 Systolic fixture checks plus eight forced-timeout checks |
-| `ci` | Full regressions, 30 checker checks, 18 synthesis builds, six netlist simulations |
+| `check` | 16 real-RTL runs: eight SV and eight cocotb; all three List sum methods |
+| `regress` | 220 real-RTL runs and ten forced-timeout rejection checks |
+| `synth` | 23 synthesis configurations, including single-node and odd dimensions |
+| `netlist` | Ten synthesis builds followed by ten functional netlist simulations |
+| `checkers` | 22 Systolic fixture checks plus ten forced-timeout checks |
+| `ci` | Full regressions, 32 checker checks, 23 synthesis builds, ten netlist simulations |
 
 `SEED=123` controls direct bench/netlist runs. Full regressions retain their
 documented fixed seed matrices. `JOBS=1` is the default because existing
@@ -48,5 +48,5 @@ Synthesis rejects inferred latches and structural errors. Netlist simulations
 use Yosys's Xilinx cell models; they do not include delays, placement/routing
 or static timing analysis. Checker fixtures are never counted as real RTL.
 
-GitHub Actions runs the five module jobs independently on pull requests,
+GitHub Actions runs the six module jobs independently on pull requests,
 pushes to `main`, and manual dispatch, retaining artifacts for seven days.
