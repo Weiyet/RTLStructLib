@@ -38,14 +38,13 @@ inference. There is no independent read clock or ready/valid interface.
 
 ## Verification
 
-Run in Linux/WSL with Icarus, Yosys, GNU Make and the pinned cocotb dependencies
-in `Utils/ci/requirements.txt`:
+Run in Linux/WSL with Icarus, Yosys, GNU Make, `cocotb==1.8.1`
+and `find-libpython==0.3.1`:
 
 ```sh
 make -C LIFO/tb/sv sim DEPTH=8 DATA_WIDTH=17 SEED=123
 make -C LIFO/tb/cocotb DEPTH=1 DATA_WIDTH=1
-make ci MODULES=lifo
-make netlist MODULES=lifo
+make -C LIFO/tb/sv netlist_sim
 ```
 
 Clean the selected build directory before reusing it with different parameters.

@@ -37,6 +37,7 @@ By using these pre-built RTL modules, engineers can accelerate development, redu
 - Table - Indexed storage mechanism, similar to a register file, enabling rapid direct access and simultaneous read write access to data without hashing. <br>
 - List - Support sorting, find_index, delete, insert operations <br>
 - Circular Linked List - Bidirectional circular traversal, address/index operations, and bounded value search. <br>
+- [Priority Queue](Priority_Queue/README.md) - Bounded binary heap with min/max priority, push/pop/peek, and request/response backpressure. <br>
 - Hash Table – Optimized for high-speed lookups, currently only supports modulus hashing and simple multi-staged chaining to handle collision <br>
 - Dual Edge Flip Flop - Double input and output rate structure which can latch data on both rising and falling edge <br> 
 - Systolic Array - Parameterized matrix multiplication with weight-stationary PEs, tiled reduction, and output backpressure. <br>
@@ -86,7 +87,7 @@ make
 ```     
 3️⃣ Synthesis and Netlist simulation
 ``` bash  
-make synth
+make -C FIFO/tb/sv synth
 ```
 4️⃣ To view VCD waveform 
 ``` bash  
@@ -95,13 +96,13 @@ gtkwave <waveform.vcd>
 5️⃣ Integrate to your project
 Include file list <Data structure>/src/rtl_list.f to your simulation or project.
 
-### Repository Regression
+### Local Verification
 
-From Linux/WSL, run `make check` for the default real-RTL benches or `make ci`
-for the complete verified regressions, synthesis and mapped-netlist checks.
-Select blocks with `MODULES="systolic list circular singly doubly lifo fifo table hash"`.
-The current CI scope covers these nine modules; see the
-[verification guide](Utils/ci/README.md) for dependencies, check counts and reports.
+Run each block's benches from Linux/WSL using its own Makefile, for example
+`make -C FIFO/tb/sv sim` or `make -C FIFO/tb/cocotb`.
+See the block's README for supported parameters and verification scope.
+The standalone cocotb benches were validated with Python 3.10,
+`cocotb==1.8.1` and `find-libpython==0.3.1`.
 
 ### Integration Changes Since v1.2
 

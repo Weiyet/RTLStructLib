@@ -13,7 +13,7 @@ TOPLEVEL = singly_linked_list
 MODULE = tb
 COCOTB_TEST_MODULES = $(MODULE)
 COMPILE_ARGS += $(foreach param,$(PARAMETERS),-P$(TOPLEVEL).$(param)=$($(param))) $(TB_COMPILE_ARGS)
-export PYTHONPATH := $(abspath ../../../Utils/tb/linked_list):$(PYTHONPATH)
+export PYTHONPATH := $(abspath ../shared):$(PYTHONPATH)
 export TB_SEED = $(SEED)
 export TB_TIMEOUT_CYCLES
 export RANDOM_SEED = $(SEED)

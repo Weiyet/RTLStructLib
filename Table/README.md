@@ -37,10 +37,9 @@ promised for this multi-write-port interface.
 ```sh
 make -C Table/tb/sv sim TABLE_SIZE=3 INPUT_RATE=3 DATA_WIDTH=17
 make -C Table/tb/cocotb TABLE_SIZE=1 DATA_WIDTH=1 INPUT_RATE=1 OUTPUT_RATE=1
-make ci MODULES=table
 ```
 
-Run in Linux/WSL with `Utils/ci/requirements.txt`; clean builds after parameter
+Run in Linux/WSL with `cocotb==1.8.1` and `find-libpython==0.3.1`; clean builds after parameter
 changes. SV and cocotb scoreboards check write priority, same-edge forwarding,
 independent ports, invalid indices, disabled-read holding, asynchronous reset,
 wide data, and seeded random traffic. The full suite contains 18 real-RTL

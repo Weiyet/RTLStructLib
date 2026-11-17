@@ -66,12 +66,11 @@ to flip-flops and multiplexers.
 make -C Singly_Linked_List/tb/sv sim SEED=123
 make -C Singly_Linked_List/tb/cocotb SEED=123
 make -C Singly_Linked_List/tb/sv netlist_sim SEED=123
-python3 Utils/tb/linked_list/regress_rtl.py --module singly
 ```
 
 Use Linux/WSL with Make, Bash, Icarus Verilog, Python, cocotb and Yosys.
 Standalone wrappers reuse the independent models in
-[`Utils/tb/linked_list/`](../Utils/tb/linked_list/README.md), which documents
+[`tb/shared/`](tb/shared/README.md), which documents
 cycle bounds, parameter overrides, mapped-netlist simulation, regression
 coverage and recorded results. VIP suites are separate from this runner.
 

@@ -9,3 +9,11 @@ iverilog_dump.v
 results.xml
 sim_build
 .venv/
+
+# Local contributor instructions
+/AGENTS.md
+
+# Local-only verification orchestration
+/Makefile
+/Utils/ci/
+/.github/workflows/

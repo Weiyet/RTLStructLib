@@ -71,10 +71,9 @@ No Vivado CDC analysis, place/route or STA sign-off is included here.
 ```sh
 make -C FIFO/tb/sv sim ASYNC=0 DEPTH=3 RD_BUFFER=0
 make -C FIFO/tb/cocotb DEPTH=4 WR_HALF=5 RD_HALF=2
-make ci MODULES=fifo
 ```
 
-Use Linux/WSL and `Utils/ci/requirements.txt`. Clean builds when changing
+Use Linux/WSL with `cocotb==1.8.1` and `find-libpython==0.3.1`. Clean builds when changing
 parameters. Independent SV and Python queue scoreboards cover fill/drain,
 overflow/underflow, repeated wrap, simultaneous operations, reset while full,
 unrelated/equal clock rates, stopped clocks, both output modes, wide data, and

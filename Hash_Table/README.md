@@ -67,10 +67,9 @@ routing or timing closure is promised.
 ```sh
 make -C Hash_Table/tb/sv sim TOTAL_INDEX=3 CHAINING_SIZE=3 KEY_WIDTH=17
 make -C Hash_Table/tb/cocotb TOTAL_INDEX=5 KEY_WIDTH=40 VALUE_WIDTH=40
-make ci MODULES=hash
 ```
 
-Use Linux/WSL and `Utils/ci/requirements.txt`; clean builds when changing
+Use Linux/WSL with `cocotb==1.8.1` and `find-libpython==0.3.1`; clean builds when changing
 parameters. Independent associative-array/dictionary scoreboards verify
 collisions, full-bucket updates, first/middle/last deletion, request latching,
 busy pulses, zero/wide keys, count width, bounded completion, reset abort,
