@@ -1,5 +1,8 @@
 # Singly Linked List pyUVM VIP (Verification IP) User Guide
 
+This legacy VIP currently fails during Python imports. Its Makefile uses
+`../../../Utils/vip/pyuvm/Makefile`; use `../../tb/` for standalone RTL verification.
+
 ## 📁 Directory Structure
 
 ```
@@ -69,14 +72,14 @@ cd Singly_Linked_List/vip/pyuvm
 # Run all tests with Icarus Verilog
 make
 
-# Run without waveforms (faster)
-make WAVES=0
+# Enable waveforms
+make WAVES=1
 
 # Run specific test
 make TESTCASE=sll_simple_test
 
 # View waveforms
-gtkwave singly_linked_list.vcd
+gtkwave sim_build/singly_linked_list.fst
 
 # Clean build files
 make clean
@@ -86,18 +89,17 @@ make clean
 
 | Command | Description |
 |---------|-------------|
-| `make` | Run all tests with Icarus Verilog, waves enabled |
-| `make WAVES=0` | Disable waveform generation |
+| `make` | Run all tests with Icarus Verilog, waves disabled by default |
+| `make WAVES=1` | Enable waveform generation |
 | `make TESTCASE=<name>` | Run specific test only |
 | `make clean` | Clean build files |
 | `make help` | Show help message |
 
 ### DUT Parameters
 
-Parameters are configured in `Makefile`:
-```makefile
-COMPILE_ARGS = -Psingly_linked_list.DATA_WIDTH=8
-COMPILE_ARGS += -Psingly_linked_list.MAX_NODE=8
+Override the local Makefile defaults on the command line:
+```bash
+make DATA_WIDTH=8 MAX_NODE=8
 ```
 
 **Note:** Run `make clean` before changing parameters!

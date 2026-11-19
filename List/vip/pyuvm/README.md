@@ -1,5 +1,8 @@
 # List pyUVM VIP (Verification IP) User Guide
 
+This legacy VIP currently fails during Python imports. Its Makefile uses
+`../../../Utils/vip/pyuvm/Makefile`; use `../../tb/` for standalone RTL verification.
+
 ## 📁 Directory Structure
 
 ```
@@ -73,14 +76,14 @@ cd List/vip/pyuvm
 # Run all tests with Icarus Verilog
 make
 
-# Run without waveforms (faster)
-make WAVES=0
+# Enable waveforms
+make WAVES=1
 
 # Run specific test
 make TESTCASE=list_simple_test
 
 # View waveforms
-gtkwave list.vcd
+gtkwave sim_build/list.fst
 
 # Clean build files
 make clean
@@ -90,19 +93,17 @@ make clean
 
 | Command | Description |
 |---------|-------------|
-| `make` | Run all tests with Icarus Verilog, waves enabled |
-| `make WAVES=0` | Disable waveform generation |
+| `make` | Run all tests with Icarus Verilog, waves disabled by default |
+| `make WAVES=1` | Enable waveform generation |
 | `make TESTCASE=<name>` | Run specific test only |
 | `make clean` | Clean build files |
 | `make help` | Show help message |
 
 ### DUT Parameters
 
-Parameters are configured in `Makefile`:
-```makefile
-COMPILE_ARGS = -Plist.DATA_WIDTH=8
-COMPILE_ARGS += -Plist.LENGTH=8
-COMPILE_ARGS += -Plist.SUM_METHOD=0
+Override the local Makefile defaults on the command line:
+```bash
+make DATA_WIDTH=8 LENGTH=8 SUM_METHOD=0
 ```
 
 **Note:** Run `make clean` before changing parameters!

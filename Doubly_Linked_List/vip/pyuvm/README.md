@@ -1,5 +1,8 @@
 # Doubly Linked List pyUVM VIP User Guide
 
+This legacy VIP currently fails during Python imports. Its Makefile uses
+`../../../Utils/vip/pyuvm/Makefile`; use `../../tb/` for standalone RTL verification.
+
 ## Overview
 
 Complete pyUVM-based Verification IP for Doubly Linked List verification with **bidirectional pointers** (both prev and next).
@@ -8,8 +11,8 @@ Complete pyUVM-based Verification IP for Doubly Linked List verification with **
 
 ```bash
 cd Doubly_Linked_List/vip/pyuvm
-make                         # Run all tests
-gtkwave doubly_linked_list.vcd  # View waveforms
+make WAVES=1                         # Run all tests
+gtkwave sim_build/doubly_linked_list.fst  # View waveforms
 ```
 
 ## 📋 Doubly Linked List Operations

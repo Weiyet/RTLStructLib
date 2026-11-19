@@ -1,5 +1,8 @@
 # Table pyUVM VIP User Guide
 
+This legacy VIP currently fails during Python imports. Its Makefile uses
+`../../../Utils/vip/pyuvm/Makefile`; use `../../tb/` for standalone RTL verification.
+
 ## Overview
 
 Complete pyUVM-based Verification IP for **Table** - multi-port read/write memory structure supporting simultaneous operations.
@@ -8,8 +11,8 @@ Complete pyUVM-based Verification IP for **Table** - multi-port read/write memor
 
 ```bash
 cd Table/vip/pyuvm
-make                     # Run test
-gtkwave table_top.vcd    # View waveforms
+make WAVES=1                     # Run test
+gtkwave sim_build/table_top.fst    # View waveforms
 ```
 
 ## Table Features

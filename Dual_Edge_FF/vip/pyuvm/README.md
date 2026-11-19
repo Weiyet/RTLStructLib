@@ -1,5 +1,8 @@
 # Dual Edge FF pyUVM VIP User Guide
 
+This legacy VIP currently fails during Python imports. Its Makefile uses
+`../../../Utils/vip/pyuvm/Makefile`; use `../../tb/` for standalone RTL verification.
+
 ## Overview
 
 Complete pyUVM-based Verification IP for **Dual Edge Flip-Flop** - latches data on **both positive and negative clock edges**.
@@ -8,8 +11,8 @@ Complete pyUVM-based Verification IP for **Dual Edge Flip-Flop** - latches data 
 
 ```bash
 cd Dual_Edge_FF/vip/pyuvm
-make                     # Run test
-gtkwave dual_edge_ff.vcd # View waveforms
+make WAVES=1                     # Run test
+gtkwave sim_build/dual_edge_ff.fst # View waveforms
 ```
 
 ## 📋 Dual Edge FF Features

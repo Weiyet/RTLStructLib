@@ -1,5 +1,8 @@
 # Hash Table pyUVM VIP User Guide
 
+This legacy VIP currently fails during Python imports. Its Makefile uses
+`../../../Utils/vip/pyuvm/Makefile`; use `../../tb/` for standalone RTL verification.
+
 ## Overview
 
 Complete pyUVM-based Verification IP for Hash Table verification with **key-value pair operations**.
@@ -8,8 +11,8 @@ Complete pyUVM-based Verification IP for Hash Table verification with **key-valu
 
 ```bash
 cd Hash_Table/vip/pyuvm
-make                      # Run all tests
-gtkwave hash_table.vcd    # View waveforms
+make WAVES=1                      # Run all tests
+gtkwave sim_build/hash_table.fst    # View waveforms
 ```
 
 ## 📋 Hash Table Operations

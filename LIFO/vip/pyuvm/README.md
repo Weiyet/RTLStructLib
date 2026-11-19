@@ -1,5 +1,8 @@
 # LIFO pyUVM VIP User Guide
 
+This legacy VIP currently fails during Python imports. Its Makefile uses
+`../../../Utils/vip/pyuvm/Makefile`; use `../../tb/` for standalone RTL verification.
+
 ## Overview
 
 Complete pyUVM-based Verification IP for **Last-In-First-Out (LIFO) Stack** - standard stack data structure.
@@ -8,8 +11,8 @@ Complete pyUVM-based Verification IP for **Last-In-First-Out (LIFO) Stack** - st
 
 ```bash
 cd LIFO/vip/pyuvm
-make                     # Run test
-gtkwave lifo.vcd         # View waveforms
+make WAVES=1                     # Run test
+gtkwave sim_build/lifo.fst         # View waveforms
 ```
 
 ## LIFO Features

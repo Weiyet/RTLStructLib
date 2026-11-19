@@ -15,13 +15,13 @@
 module tb(
     );
     // DUT parameter
-    localparam DUT_DATA_WIDTH = 8;
-    localparam DUT_RESET_VALUE = 0; // Max number of nodes in the list
+    parameter DUT_DATA_WIDTH = 8;
+    parameter DUT_RESET_VALUE = 0;
     
     // TB parameter
-    localparam TB_CLK_PERIOD = 25;
-    localparam TB_TEST_WEIGHT = 1;
-    localparam SIM_TIMEOUT = 500000;
+    parameter TB_CLK_PERIOD = 25;
+    parameter TB_TEST_WEIGHT = 1;
+    parameter SIM_TIMEOUT = 500000;
 
 integer err_cnt = 0;
 
@@ -176,7 +176,7 @@ initial begin
     
     if (err_cnt > 0) begin
         $display("\n%0t TEST FAILED",$realtime);
-        $display("Error count = %0d\n", err_cnt);
+        $fatal(1, "Error count = %0d", err_cnt);
     end else
         $display("\n%0t TEST PASSED\n", $realtime);
     $finish;
@@ -185,8 +185,7 @@ end
 initial begin
     #(SIM_TIMEOUT)
     $display("\n%0t TEST FAILED", $realtime);
-    $display("SIM TIMEOUT!\n");
-    $finish;
+    $fatal(1, "SIM TIMEOUT!");
 end
 
 endmodule

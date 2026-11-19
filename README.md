@@ -10,7 +10,7 @@
 ![Verilog](https://img.shields.io/badge/Verilog-IEEE_1364--2005-blue)
 ![SystemVerilog](https://img.shields.io/badge/SystemVerilog-IEEE_1800--2017-blue)
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![Version](https://img.shields.io/badge/Version-v1.2-green)
+![Version](https://img.shields.io/badge/Version-v1.3-green)
 ![Status](https://img.shields.io/badge/Status-In_Development-yellow)
   
 </div>
@@ -103,6 +103,40 @@ Run each block's benches from Linux/WSL using its own Makefile, for example
 See the block's README for supported parameters and verification scope.
 The standalone cocotb benches were validated with Python 3.10,
 `cocotb==1.8.1` and `find-libpython==0.3.1`.
+
+### Shared Makefiles
+
+Each bench keeps its RTL sources, top module and parameter defaults locally,
+then includes one shared rule file:
+
+| Bench | Include from its local Makefile |
+|-------|---------------------------------|
+| `tb/sv` | `include ../../../Utils/tb/sv/Makefile` |
+| `tb/cocotb` | `include ../../../Utils/tb/cocotb/Makefile` |
+| `vip/pyuvm` | `include ../../../Utils/vip/pyuvm/Makefile` |
+
+The TB and pyUVM rules default to Icarus. SV UVM uses the separate Verilator
+rules in `Utils/vip/Makefile`. pyUVM reuses the cocotb engine and adds the
+repository to `PYTHONPATH`; install the environment's Python dependencies first.
+
+```bash
+make -C FIFO/tb/sv sim DEPTH=8 SEED=123 WAVES=1
+make -C FIFO/tb/cocotb DEPTH=8 SEED=123 WAVES=1
+make -C Priority_Queue/vip/pyuvm DEPTH=5 MIN_FIRST=0 SEED=123
+```
+
+`WAVES=0` is the default. SV writes `sim_build/sim.vcd`; Icarus/cocotb
+writes `sim_build/<TOPLEVEL>.fst`. Override `SIM_BUILD` to isolate builds,
+or run `make clean` before changing elaboration parameters. SV synthesis
+also writes under `SIM_BUILD`; `NETLIST` and `SYNTH_LOG` can override those paths.
+`netlist_sim` is supported by FIFO, LIFO, Table, Hash Table, Priority Queue,
+Singly Linked List and Doubly Linked List. Unsupported benches fail explicitly;
+the old automatic Xilinx library downloads have been removed.
+
+The default Python target, `check`, validates cocotb XML and rejects failed,
+skipped or empty test runs. The eight legacy pyUVM environments other than
+Priority Queue still have Python import failures; sharing build rules does
+not make those VIP suites functionally verified. Use their standalone TBs.
 
 ### Integration Changes Since v1.2
 
