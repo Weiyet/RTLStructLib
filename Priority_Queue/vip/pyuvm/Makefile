@@ -14,6 +14,7 @@ VERILOG_SOURCES = $(RTL_SOURCES)
 TOPLEVEL = priority_queue
 MODULE = tb_priority
 COCOTB_TEST_MODULES = $(MODULE)
+export PYTHONPATH := $(abspath ../../..):$(PYTHONPATH)
 COMPILE_ARGS += $(foreach param,$(PARAMETERS),-P$(TOPLEVEL).$(param)=$($(param))) $(TB_COMPILE_ARGS)
 export TB_SEED = $(SEED)
 export TB_TIMEOUT_CYCLES

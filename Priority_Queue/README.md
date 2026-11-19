@@ -108,7 +108,7 @@ mapped-netlist simulation. Clean bench builds after changing parameters.
 [pyUVM](vip/pyuvm/README.md) and [SystemVerilog UVM VIP](vip/uvm/README.md) provide active/passive agents,
 pin-based monitors, multiset scoreboards, boundary/random/reset sequences, and
 standalone test tops. `make -C Priority_Queue/vip/pyuvm` runs the pyUVM tests.
-SV UVM has semantic compilation and Verilator lint-only checks against the
-official library; use `make -C Priority_Queue/vip/uvm lint UVM_HOME=/path/to/uvm-core`
-with Verilator 5.054+.
-Its simulation has not been validated locally.
+SV UVM supports actual simulation with Verilator 5.054+ using the shared
+`Utils/vip/Makefile`. See its README for the DPI-enabled UVM dependency, then
+run `make -C Priority_Queue/vip/uvm sim`. The `lint` target remains available
+for compilation checks without simulation.

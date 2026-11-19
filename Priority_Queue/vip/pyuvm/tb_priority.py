@@ -2,10 +2,11 @@ import os
 import cocotb
 from cocotb.clock import Clock
 from pyuvm import ConfigDB, uvm_root
-from priority_queue_vip.common import PriorityVipConfig
-from priority_queue_vip.tests import (
-    PriorityVipBoundaryTest, PriorityVipRandomTest, PriorityVipResetTest, PriorityVipPassiveTest,
-)
+from Priority_Queue.vip.pyuvm.common.priority_vip_config import PriorityVipConfig
+from Priority_Queue.vip.pyuvm.tests.priority_vip_boundary_test import PriorityVipBoundaryTest
+from Priority_Queue.vip.pyuvm.tests.priority_vip_random_test import PriorityVipRandomTest
+from Priority_Queue.vip.pyuvm.tests.priority_vip_reset_test import PriorityVipResetTest
+from Priority_Queue.vip.pyuvm.tests.priority_vip_passive_test import PriorityVipPassiveTest
 
 
 async def run(dut, test):

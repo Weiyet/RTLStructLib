@@ -12,22 +12,28 @@ make -C Priority_Queue/vip/pyuvm DEPTH=3 MIN_FIRST=0 PRIORITY_WIDTH=17 DATA_WIDT
 ```
 
 `tb_priority.py` starts the clock, sets `PriorityVipConfig` in `ConfigDB`, and
-runs four tests. `priority_queue_vip/` is a namespaced Python package, avoiding
-collisions with the installed `pyuvm` package or generic `tests` packages.
+runs four tests. The directory layout follows the FIFO pyUVM VIP:
 
-- `common.py`: `PriorityVipConfig`, `PriorityVipItem`.
-- `agent.py`: driver, pin monitor and active/passive agent; uses a standard pyUVM sequencer.
-- `scoreboard.py`, `env.py`: multiset model, protocol checking and TLM connections.
-- `sequences.py`: boundary, random, and reset-during-operation sequences.
-- `tests.py`: corresponding UVM tests.
+- `common/`: `priority_vip_config.py` and `priority_vip_seq_item.py`.
+- `agent/`: separate `priority_vip_driver.py`, `priority_vip_monitor.py`,
+  `priority_vip_sequencer.py` and `priority_vip_agent.py`.
+- `env/`: environment and multiset scoreboard.
+- `sequences/`: base, boundary, random and reset sequences.
+- `tests/`: base test and boundary, random, reset and passive scenarios.
 
 ## Integration
 
-Put `Priority_Queue/vip/pyuvm` on `PYTHONPATH`. Create the configuration with
+Put the repository root on `PYTHONPATH` (the Makefile does this automatically).
+Import components through `Priority_Queue.vip.pyuvm` so their relative imports
+remain valid alongside other VIPs. Create the configuration with
 `PriorityVipConfig.from_dut(dut)` or explicitly provide parameters if your
 simulator does not expose them. Set it before building `PriorityVipEnv`:
 
 ```python
+from pyuvm import ConfigDB
+from Priority_Queue.vip.pyuvm.common.priority_vip_config import PriorityVipConfig
+from Priority_Queue.vip.pyuvm.env.priority_vip_env import PriorityVipEnv
+
 cfg = PriorityVipConfig.from_dut(dut, active=True, seed=123)
 ConfigDB().set(None, "*", "priority_vip_cfg", cfg)
 # Inside your uvm_test.build_phase:

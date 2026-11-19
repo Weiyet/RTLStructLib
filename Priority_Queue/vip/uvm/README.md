@@ -6,29 +6,53 @@ by the interface, classes and DUT through `priority_vip_params_pkg`.
 
 ## Standalone simulation
 
-The Makefile provides a **Questa command template**, requiring a UVM-capable
-installation and its precompiled UVM library. It has not been run locally;
-Icarus is used only for the separate pyUVM environment.
+Use Linux/WSL, GNU Make, a C++20 compiler, Python 3, GNU `timeout`, and
+**Verilator 5.054 or newer**. The default target builds and runs the actual
+SV UVM bench and RTL with `--binary --timing --assert --vpi`.
+The shared rules are in [`Utils/vip/Makefile`](../../../Utils/vip/Makefile).
+
+Use a UVM library with the Verilator DPI backend. The tested version is
+[`verilator/uvm`](https://github.com/verilator/uvm) at commit
+`656f20d087370a7c742e00188d20bbf30fa95339` (UVM 2020.3.1):
 
 ```sh
-make -C Priority_Queue/vip/uvm UVM_HOME=/path/to/uvm \
-    UVM_LIB=uvm TEST=priority_vip_boundary_test
-make -C Priority_Queue/vip/uvm UVM_HOME=/path/to/uvm \
-    TEST=priority_vip_random_test DEPTH=5 MIN_FIRST=0 SEED=19
-make -C Priority_Queue/vip/uvm UVM_HOME=/path/to/uvm \
-    TEST=priority_vip_reset_test
+git clone https://github.com/verilator/uvm.git /path/to/uvm-verilator
+git -C /path/to/uvm-verilator checkout 656f20d087370a7c742e00188d20bbf30fa95339
+export UVM_HOME=/path/to/uvm-verilator
+export VERILATOR=/path/to/verilator-5.054/bin/verilator
 ```
 
-Override `UVM_INCDIR` if macros are not in `$UVM_HOME/src`, and `UVM_LIB` to
-match the installed library. The source and compiled library versions must
-match. Each invocation recompiles with the requested parameters. Simulator
-errors, UVM error/fatal reports, and missing completion markers fail the Make
-target. `TB_TIMEOUT_CYCLES` controls the monitor's total-cycle watchdog.
+From the repository root:
 
-For another simulator, compile its UVM package first, add the UVM macro include
-directory, then compile `files.f` from this directory. Elaborate `tb_top` with
-`+UVM_TESTNAME=priority_vip_boundary_test` (or random/reset test). Use that
-simulator's seed option. `sim/check_uvm_log.py` validates the completion log.
+```sh
+make -C Priority_Queue/vip/uvm sim
+make -C Priority_Queue/vip/uvm run TEST=priority_vip_random_test SEED=19
+make -C Priority_Queue/vip/uvm run TEST=priority_vip_reset_test
+make -C Priority_Queue/vip/uvm sim DEPTH=5 MIN_FIRST=0 \
+    TEST=priority_vip_random_test SIM_BUILD=sim_build/max-first
+```
+
+`sim` checks/rebuilds sources and runs; `compile` only builds; `run` reuses the
+existing binary. Use `sim` after changing RTL, VIP, parameters or compiler
+flags. `TEST` and `SEED` are runtime settings. Keep separate `SIM_BUILD`
+directories when retaining several parameter configurations.
+
+`JOBS=2` and `CXX_OPT=-O0` limit build cost by default; both are overridable.
+`TB_TIMEOUT_CYCLES` controls the monitor watchdog; `SIM_TIMEOUT=120` limits
+wall-clock simulation seconds. Logs go to `SIM_BUILD/compile.log` and
+`SIM_BUILD/sim.log`. Nonzero simulator status, timeout, UVM error/fatal reports,
+and missing positive completion markers fail Make, including through `tee`.
+
+Override `UVM_INCDIR` or `UVM_DPI` for a different library layout. The stock
+Accellera 2020.3.1 DPI source lacks a Verilator HDL backend; use the tested
+library above for simulation. DPI remains enabled for UVM regex and command-line
+processing. Verilator's two-state simulation does not validate X/Z behavior.
+
+To reuse the shared Makefile in another bench, set `TEST`, `DEFINES`,
+`PLUSARGS` and `CHECK_LOG`, then include it. `CHECK_LOG` must name a command
+accepting the simulation log path and rejecting incomplete/failed tests.
+`TOP` defaults to `tb_top`; `FILELIST` defaults to `files.f`. Paths in the file
+list are relative to the invoking bench directory.
 
 ## Reuse
 
@@ -55,27 +79,29 @@ Errors, full/empty behavior, priority ties and timing follow the RTL README.
 
 ## Validation status
 
-Local checks passed four parameter configurations with pyslang 11.0.0 and
-Verilator 5.054 against official Accellera UVM 2020.3.1.
-**No SV UVM simulation result is claimed.** The executable, parameter-regressed
-verification environment in this repository is currently the pyUVM variant.
+Verilator 5.054 and the pinned UVM library passed all six RTL simulations:
+
+| DEPTH / priority bits / data bits / order | Boundary responses | Random responses | Reset responses |
+|---|---:|---:|---:|
+| 16 / 8 / 8 / min-first | 202 | 417 | 378 |
+| 5 / 40 / 40 / max-first | 70 | 406 | 105 |
+
+Default boundary/reset used seed 123; default random and all max-first tests
+used seed 19. All runs reported zero UVM errors/fatals. Reset tests accounted
+for 21 and 15 aborted requests respectively. Five negative runs confirmed
+nonzero Make status for watchdog timeouts, invalid test names, and a wall-clock
+timeout. Old Verilator and missing UVM/DPI dependencies were also rejected.
+Compiler warnings remain visible; these are two-state simulation results.
 
 ## Verilator check only
 
 ```sh
-make -C Priority_Queue/vip/uvm lint UVM_HOME=/path/to/uvm-core \
-    VERILATOR=/path/to/verilator-5.054/bin/verilator
+make -C Priority_Queue/vip/uvm lint
 ```
 
-Run this from the repository root. Override `DEPTH`, `PRIORITY_WIDTH`,
-`DATA_WIDTH` and `MIN_FIRST` to check another configuration. The target uses
-`--lint-only --timing` with the
-actual UVM package, interface, classes, top and RTL. It does not build
-a testbench executable or run UVM phases. `-Wno-fatal` retains warnings without
-making them fatal; errors and unsupported syntax still fail. No black-box or
-unsupported-feature bypass flags are used. This is not a warning-free claim.
-
-Use Verilator 5.054 or newer; 5.024 fails inside the official UVM library.
-The validated UVM source commit is `78c06547a2a0a29b3dc9dcafae62b75b2ff61544`.
-Inspect `Priority_Queue/vip/uvm/sim_build/lint.log`; override `SIM_BUILD` to
-retain outputs elsewhere. The lint target does not build a simulation binary.
+Use the same environment setup above. Override the queue parameters as needed.
+This target checks the UVM package, interface, classes, top and RTL with
+`--lint-only --timing --assert`; it does not build or run a simulation binary.
+Both lint and simulation retain warnings through `-Wno-fatal`, while compiler
+errors still fail. No unsupported-feature bypass flags are used.
+The log is `SIM_BUILD/lint.log`.

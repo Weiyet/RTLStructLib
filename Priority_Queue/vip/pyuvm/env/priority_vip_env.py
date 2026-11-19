@@ -1,6 +1,6 @@
 from pyuvm import uvm_env
-from .agent import PriorityVipAgent
-from .scoreboard import PriorityVipScoreboard
+from ..agent.priority_vip_agent import PriorityVipAgent
+from .priority_vip_scoreboard import PriorityVipScoreboard
 
 
 class PriorityVipEnv(uvm_env):

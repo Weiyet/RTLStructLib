@@ -1,36 +1,7 @@
 from cocotb.triggers import FallingEdge, RisingEdge
 from cocotb.binary import BinaryValue
-from pyuvm import ConfigDB, uvm_test
-from .env import PriorityVipEnv
-from .sequences import PriorityVipBoundarySequence, PriorityVipRandomSequence, PriorityVipResetSequence
-
-
-class PriorityVipBaseTest(uvm_test):
-    sequence_type = PriorityVipBoundarySequence
-
-    def build_phase(self):
-        self.cfg = ConfigDB().get(self, "", "priority_vip_cfg")
-        self.env = PriorityVipEnv("env", self)
-
-    async def run_phase(self):
-        self.raise_objection()
-        await self.sequence_type("sequence", self.cfg).start(self.env.get_sequencer())
-        for _ in range(3):
-            await FallingEdge(self.cfg.dut.clk)
-        assert self.env.scoreboard.occupancy == 0
-        self.drop_objection()
-
-
-class PriorityVipBoundaryTest(PriorityVipBaseTest):
-    pass
-
-
-class PriorityVipRandomTest(PriorityVipBaseTest):
-    sequence_type = PriorityVipRandomSequence
-
-
-class PriorityVipResetTest(PriorityVipBaseTest):
-    sequence_type = PriorityVipResetSequence
+from pyuvm import ConfigDB
+from .priority_vip_base_test import PriorityVipBaseTest
 
 
 class PriorityVipPassiveTest(PriorityVipBaseTest):
