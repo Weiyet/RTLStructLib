@@ -13,9 +13,9 @@ interface list_vip_if(input logic clk);
     logic rst;
     logic [2:0] op_sel;
     logic op_en;
-    logic [31:0] data_in;      // Parameterizable width
-    logic [15:0] index_in;     // Parameterizable width
-    logic [47:0] data_out;     // LENGTH_WIDTH + DATA_WIDTH
+    logic [7:0] data_in;      // Parameterizable width
+    logic [2:0] index_in;     // Parameterizable width
+    logic [10:0] data_out;     // LENGTH_WIDTH + DATA_WIDTH
     logic op_done;
     logic op_in_progress;
     logic op_error;

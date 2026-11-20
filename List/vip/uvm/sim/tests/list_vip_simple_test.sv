@@ -59,7 +59,6 @@ class simple_test extends base_test;
 
 endclass
 
-
 //////////////////////////////////////////////////////////////////////////////////
 // Direct operation test - mirrors tb.sv direct_op_test
 //////////////////////////////////////////////////////////////////////////////////
@@ -154,7 +153,6 @@ class direct_op_test extends base_test;
 
 endclass
 
-
 //////////////////////////////////////////////////////////////////////////////////
 // Random operation test
 //////////////////////////////////////////////////////////////////////////////////
@@ -220,4 +218,66 @@ class random_test extends base_test;
         phase.drop_objection(this);
     endtask
 
+endclass
+
+class list_vip_boundary_seq extends list_vip_base_seq;
+    `uvm_object_utils(list_vip_boundary_seq)
+    list_vip_config cfg;
+    function new(string name = "boundary_seq"); super.new(name); endfunction
+    task send(list_op_e op, int data, int index);
+        list_vip_seq_item item = list_vip_seq_item::type_id::create("item");
+        start_item(item);
+        item.op = op; item.data = data; item.index = index;
+        finish_item(item);
+    endtask
+    task reset_dut();
+        virtual list_vip_if vif;
+        if (!uvm_config_db#(virtual list_vip_if)::get(m_sequencer, "", "list_vip_vif", vif))
+            `uvm_fatal("CONFIG", "Missing interface")
+        @(negedge vif.clk);
+        vif.rst = 1;
+        repeat (3) @(negedge vif.clk);
+        vif.rst = 0;
+        repeat (2) @(negedge vif.clk);
+    endtask
+    task body();
+        if (!uvm_config_db#(list_vip_config)::get(m_sequencer, "", "list_vip_cfg", cfg))
+            `uvm_fatal("CONFIG", "Missing config")
+        send(READ, 0, 0);
+        send(DELETE, 0, 0);
+        send(SUM, 0, 0);
+        send(FIND_ALL, 0, 0);
+        send(SORT_ASC, 0, 0);
+        for (int i=0; i<cfg.LENGTH; i++) send(INSERT, (i%2) ? 255 : 7, cfg.LENGTH-1);
+        send(INSERT, 42, 0);
+        send(FIND_ALL, 7, 0);
+        send(FIND_1ST, 255, 0);
+        send(FIND_ALL, 8, 0);
+        send(SUM, 0, 0);
+        send(SORT_ASC, 0, 0);
+        for (int i=0; i<cfg.LENGTH; i++) send(READ, 0, i);
+        send(SORT_DES, 0, 0);
+        for (int i=0; i<cfg.LENGTH; i++) send(READ, 0, i);
+        send(DELETE, 0, 3);
+        send(INSERT, 9, 2);
+        reset_dut();
+        send(SUM, 0, 0);
+        send(INSERT, 77, 0);
+        send(READ, 0, 0);
+    endtask
+endclass
+
+class boundary_test extends base_test;
+    `uvm_component_utils(boundary_test)
+    function new(string name = "boundary_test", uvm_component parent = null);
+        super.new(name, parent);
+    endfunction
+    task run_phase(uvm_phase phase);
+        list_vip_boundary_seq seq;
+        phase.raise_objection(this);
+        seq = list_vip_boundary_seq::type_id::create("boundary");
+        seq.start(env.get_sequencer());
+        #100ns;
+        phase.drop_objection(this);
+    endtask
 endclass

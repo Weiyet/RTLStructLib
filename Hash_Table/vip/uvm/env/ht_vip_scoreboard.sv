@@ -6,6 +6,8 @@
 class ht_vip_scoreboard extends uvm_scoreboard;
     `uvm_component_utils(ht_vip_scoreboard)
 
+    int checked_transactions;
+
     uvm_analysis_imp #(ht_vip_seq_item, ht_vip_scoreboard) analysis_export;
     ht_vip_config cfg;
 
@@ -31,89 +33,50 @@ class ht_vip_scoreboard extends uvm_scoreboard;
     endfunction
 
     virtual function void write(ht_vip_seq_item item);
-        `uvm_info("SCOREBOARD", $sformatf("Checking: %s", item.convert2string()), UVM_MEDIUM)
-
+        int bucket, occupancy;
+        bit expected_error;
+        bit [31:0] expected_value;
+        if (item.reset_seen) begin
+            hash_table.delete();
+            return;
+        end
+        checked_transactions++;
+        bucket = item.key % cfg.TOTAL_INDEX;
+        occupancy = 0;
+        foreach (hash_table[key]) if (key % cfg.TOTAL_INDEX == bucket) occupancy++;
+        expected_error = 0;
+        expected_value = 0;
         case (item.op)
-            INSERT: check_insert(item);
-            DELETE: check_delete(item);
-            SEARCH: check_search(item);
-            default: `uvm_info("SCOREBOARD", "IDLE operation, no checking", UVM_HIGH)
-        endcase
-    endfunction
-
-    function void check_insert(ht_vip_seq_item item);
-        insert_count++;
-
-        if (item.op_error) begin
-            // Check if table is full
-            if (hash_table.size() >= cfg.TOTAL_INDEX * cfg.CHAINING_SIZE) begin
-                `uvm_info("SCOREBOARD", "Insert correctly failed - table full", UVM_MEDIUM)
-            end else begin
-                `uvm_warning("SCOREBOARD", $sformatf("Insert failed but table not full: size=%0d", hash_table.size()))
-            end
-        end else begin
-            // Insert should succeed
-            hash_table[item.key] = item.value;
-            `uvm_info("SCOREBOARD", $sformatf("Inserted key=0x%0h value=0x%0h (total=%0d)",
-                      item.key, item.value, hash_table.size()), UVM_HIGH)
-        end
-    endfunction
-
-    function void check_delete(ht_vip_seq_item item);
-        delete_count++;
-
-        if (item.op_error) begin
-            // Delete should fail if key not found
-            if (!hash_table.exists(item.key)) begin
-                `uvm_info("SCOREBOARD", $sformatf("Delete correctly failed - key 0x%0h not found", item.key), UVM_MEDIUM)
-            end else begin
-                `uvm_error("SCOREBOARD", $sformatf("Delete failed but key 0x%0h exists in model", item.key))
-            end
-        end else begin
-            // Delete should succeed
-            if (hash_table.exists(item.key)) begin
-                hash_table.delete(item.key);
-                `uvm_info("SCOREBOARD", $sformatf("Deleted key=0x%0h (total=%0d)",
-                          item.key, hash_table.size()), UVM_HIGH)
-            end else begin
-                `uvm_error("SCOREBOARD", $sformatf("Delete succeeded but key 0x%0h not in model", item.key))
-            end
-        end
-    endfunction
-
-    function void check_search(ht_vip_seq_item item);
-        search_count++;
-
-        if (item.op_error) begin
-            // Search should fail if key not found
-            if (!hash_table.exists(item.key)) begin
-                `uvm_info("SCOREBOARD", $sformatf("Search correctly failed - key 0x%0h not found", item.key), UVM_MEDIUM)
-            end else begin
-                `uvm_error("SCOREBOARD", $sformatf("Search failed but key 0x%0h exists in model", item.key))
-            end
-        end else begin
-            // Search should succeed and value should match
-            if (hash_table.exists(item.key)) begin
-                if (item.result_value == hash_table[item.key]) begin
-                    `uvm_info("SCOREBOARD", $sformatf("Search matched: key=0x%0h value=0x%0h",
-                              item.key, item.result_value), UVM_HIGH)
-                end else begin
-                    `uvm_error("SCOREBOARD", $sformatf("Search value mismatch: key=0x%0h expected=0x%0h actual=0x%0h",
-                              item.key, hash_table[item.key], item.result_value))
+            INSERT: begin
+                expected_error = !hash_table.exists(item.key) && occupancy == cfg.CHAINING_SIZE;
+                if (!expected_error) begin
+                    if (!hash_table.exists(item.key)) occupancy++;
+                    hash_table[item.key] = item.value;
                 end
-            end else begin
-                `uvm_error("SCOREBOARD", $sformatf("Search succeeded but key 0x%0h not in model", item.key))
             end
-        end
+            DELETE: begin
+                expected_error = !hash_table.exists(item.key);
+                if (!expected_error) begin
+                    hash_table.delete(item.key);
+                    occupancy--;
+                end
+            end
+            SEARCH: begin
+                expected_error = !hash_table.exists(item.key);
+                if (!expected_error) expected_value = hash_table[item.key];
+            end
+            default: begin
+                expected_error = 1;
+                occupancy = 0;
+            end
+        endcase
+        if (item.op_error != expected_error || item.result_value != expected_value || item.collision_count != occupancy)
+            `uvm_error("SCOREBOARD", $sformatf("%s key=%0h expected error/value/count=%0b/%0h/%0d actual=%0b/%0h/%0d", item.op.name(), item.key, expected_error, expected_value, occupancy, item.op_error, item.result_value, item.collision_count))
     endfunction
 
     function void report_phase(uvm_phase phase);
-        `uvm_info("SCOREBOARD", $sformatf("\n\n=== Hash Table Statistics ==="), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Total Inserts: %0d", insert_count), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Total Deletes: %0d", delete_count), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Total Searches: %0d", search_count), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Final Hash Table Size: %0d", hash_table.size()), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("=============================\n"), UVM_LOW)
+        if (checked_transactions == 0)
+            `uvm_fatal("EMPTY_TEST", "No completed transactions checked")
+        `uvm_info("RESULT", $sformatf("VIP PASSED: %0d transactions", checked_transactions), UVM_LOW)
     endfunction
-
 endclass

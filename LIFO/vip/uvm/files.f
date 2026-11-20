@@ -1,0 +1,9 @@
++incdir+common
++incdir+agent
++incdir+env
++incdir+sequences
++incdir+sim
+interface/lifo_vip_if.sv
+../../src/lifo.sv
+common/lifo_vip_pkg.sv
+sim/tb_top.sv

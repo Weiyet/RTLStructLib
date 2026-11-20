@@ -8,12 +8,14 @@
 //
 //////////////////////////////////////////////////////////////////////////////////
 
-
 `timescale 1ns/1ps
 
 module tb_top;
     import uvm_pkg::*;
     import fifo_vip_pkg::*;
+
+    `include "tests/fifo_vip_base_test.sv"
+    `include "tests/fifo_vip_simple_test.sv"
 
     // Clocks
     logic wr_clk = 0;
@@ -30,6 +32,7 @@ module tb_top;
     initial begin
         dut_if.rst = 1;
         repeat(5) @(posedge wr_clk);
+        @(negedge wr_clk);
         dut_if.rst = 0;
     end
 
@@ -55,16 +58,15 @@ module tb_top;
     initial begin
         uvm_config_db#(virtual fifo_vip_if)::set(null, "*", "fifo_vip_vif", dut_if);
 
-        $dumpfile("waves.vcd");
-        $dumpvars(0, tb_top);
-
         run_test();
     end
 
     // Timeout
     initial begin
-        #50us;
-        $finish;
+        int timeout_cycles = 100000;
+        void'($value$plusargs("TB_TIMEOUT_CYCLES=%d", timeout_cycles));
+        repeat (timeout_cycles) @(posedge wr_clk);
+        `uvm_fatal("TIMEOUT", "UVM test did not complete")
     end
 
 endmodule

@@ -25,25 +25,17 @@ class deff_vip_monitor extends uvm_monitor;
 
     task run_phase(uvm_phase phase);
         deff_vip_seq_item item;
-
         forever begin
-            @(vif.mon_cb);
-
-            // Check if any latch enable is active
-            if ((vif.mon_cb.pos_edge_latch_en | vif.mon_cb.neg_edge_latch_en) != 8'h00) begin
-                item = deff_vip_seq_item::type_id::create("item");
-
-                item.data_in = vif.mon_cb.data_in;
-                item.pos_edge_latch_en = vif.mon_cb.pos_edge_latch_en;
-                item.neg_edge_latch_en = vif.mon_cb.neg_edge_latch_en;
-
-                // Wait for next clock edge to capture output
-                @(vif.mon_cb);
-                item.data_out = vif.mon_cb.data_out;
-
-                ap.write(item);
-                `uvm_info("MONITOR", $sformatf("Observed %s", item.convert2string()), UVM_HIGH)
-            end
+            @(posedge vif.clk or negedge vif.clk);
+            item = deff_vip_seq_item::type_id::create("edge_sample");
+            item.rising_edge = vif.clk;
+            item.reset_seen = !vif.rst_n;
+            item.data_in = vif.data_in;
+            item.pos_edge_latch_en = vif.pos_edge_latch_en;
+            item.neg_edge_latch_en = vif.neg_edge_latch_en;
+            #1ns;
+            item.data_out = vif.data_out;
+            ap.write(item);
         end
     endtask
 

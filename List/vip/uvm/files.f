@@ -1,0 +1,11 @@
++incdir+common
++incdir+agent
++incdir+env
++incdir+sequences
++incdir+sim
+interface/list_vip_if.sv
+../../src/list.sv
+../../src/adder.sv
+../../src/sorter.sv
+common/list_vip_pkg.sv
+sim/tb_top.sv

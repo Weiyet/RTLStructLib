@@ -29,44 +29,32 @@ class list_vip_monitor extends uvm_monitor;
 
     task run_phase(uvm_phase phase);
         list_vip_seq_item item;
-
         forever begin
-            @(vif.mon_cb);
-
-            // Detect operation when op_en is asserted
-            if (vif.mon_cb.op_en) begin
-                item = list_vip_seq_item::type_id::create("item");
-
-                // Capture operation type
-                case (vif.mon_cb.op_sel)
-                    3'b000: item.op = READ;
-                    3'b001: item.op = INSERT;
-                    3'b010: item.op = FIND_ALL;
-                    3'b011: item.op = FIND_1ST;
-                    3'b100: item.op = SUM;
-                    3'b101: item.op = SORT_ASC;
-                    3'b110: item.op = SORT_DES;
-                    3'b111: item.op = DELETE;
-                endcase
-
-                // Capture inputs
-                item.data = vif.mon_cb.data_in;
-                item.index = vif.mon_cb.index_in;
-
-                // Wait for operation to complete
-                @(vif.mon_cb);
-                while (!vif.mon_cb.op_done) begin
-                    @(vif.mon_cb);
-                end
-
-                // Capture outputs
-                item.result_data = vif.mon_cb.data_out;
-                item.op_done = vif.mon_cb.op_done;
-                item.op_error = vif.mon_cb.op_error;
-                item.current_len = vif.mon_cb.len;
-
+            @(posedge vif.clk);
+            if (vif.rst) begin
+                item = list_vip_seq_item::type_id::create("reset");
+                item.reset_seen = 1;
                 ap.write(item);
-                `uvm_info("MONITOR", $sformatf("Observed %s: %s", item.op.name(), item.convert2string()), UVM_HIGH)
+                item = null;
+                continue;
+            end
+            // Capture pins at acceptance, before nonblocking RTL updates.
+            if (item == null && vif.op_en && !vif.op_done && !vif.op_in_progress) begin
+                item = list_vip_seq_item::type_id::create("request");
+                item.op = list_op_e'(vif.op_sel);
+                item.data = vif.data_in;
+                item.index = vif.index_in;
+            end
+            #1ns;
+            if (item != null && vif.op_done && vif.op_in_progress)
+                item.matched_indices.push_back(int'(vif.data_out));
+            if (item != null && (vif.op_done && !vif.op_in_progress)) begin
+                item.result_data = vif.data_out;
+                item.op_error = vif.op_error;
+                item.current_len = vif.len;
+                item.op_done = vif.op_done;
+                ap.write(item);
+                item = null;
             end
         end
     endtask

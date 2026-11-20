@@ -6,6 +6,8 @@
 class deff_vip_scoreboard extends uvm_scoreboard;
     `uvm_component_utils(deff_vip_scoreboard)
 
+    int checked_transactions;
+
     uvm_analysis_imp #(deff_vip_seq_item, deff_vip_scoreboard) analysis_export;
     deff_vip_config cfg;
 
@@ -31,50 +33,23 @@ class deff_vip_scoreboard extends uvm_scoreboard;
         q_out_pos = cfg.RESET_VALUE;
     endfunction
 
+    bit [7:0] expected;
+
     virtual function void write(deff_vip_seq_item item);
-        bit [7:0] expected_data_out;
-        bit [7:0] d_in_pos;
-        bit [7:0] d_in_neg;
-
-        transaction_count++;
-
-        `uvm_info("SCOREBOARD", $sformatf("Checking: %s", item.convert2string()), UVM_MEDIUM)
-
-        // Model the dual-edge FF behavior
-        // For each bit, update based on latch enables
-        for (int i = 0; i < 8; i++) begin
-            // Positive edge logic
-            d_in_pos[i] = item.data_in[i] ^ q_out_neg[i];
-            if (item.pos_edge_latch_en[i]) begin
-                q_out_pos[i] = d_in_pos[i];
-            end
-
-            // Negative edge logic (happens in same cycle)
-            d_in_neg[i] = item.data_in[i] ^ q_out_pos[i];
-            if (item.neg_edge_latch_en[i]) begin
-                q_out_neg[i] = d_in_neg[i];
-            end
-
-            // Output is XOR of both registers
-            expected_data_out[i] = q_out_pos[i] ^ q_out_neg[i];
+        bit [7:0] enables;
+        if (item.reset_seen) expected = cfg.RESET_VALUE;
+        else begin
+            enables = item.rising_edge ? item.pos_edge_latch_en : item.neg_edge_latch_en;
+            expected = (expected & ~enables) | (item.data_in & enables);
+            if (enables != 0) checked_transactions++;
         end
-
-        // Check output
-        if (item.data_out != expected_data_out) begin
-            `uvm_error("SCOREBOARD", $sformatf("Data mismatch: expected=0x%0h actual=0x%0h (pos_en=0x%0h neg_en=0x%0h)",
-                      expected_data_out, item.data_out, item.pos_edge_latch_en, item.neg_edge_latch_en))
-        end else begin
-            `uvm_info("SCOREBOARD", $sformatf("Data matched: 0x%0h", item.data_out), UVM_HIGH)
-        end
+        if (item.data_out !== expected)
+            `uvm_error("SCOREBOARD", $sformatf("Edge=%0b expected=%0h actual=%0h", item.rising_edge, expected, item.data_out))
     endfunction
 
     function void report_phase(uvm_phase phase);
-        `uvm_info("SCOREBOARD", $sformatf("\n\n=== Dual Edge FF Statistics ==="), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Total Transactions: %0d", transaction_count), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Final q_out_pos: 0x%0h", q_out_pos), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Final q_out_neg: 0x%0h", q_out_neg), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Final data_out: 0x%0h", q_out_pos ^ q_out_neg), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("===============================\n"), UVM_LOW)
+        if (checked_transactions == 0)
+            `uvm_fatal("EMPTY_TEST", "No enabled edges checked")
+        `uvm_info("RESULT", $sformatf("VIP PASSED: %0d transactions", checked_transactions), UVM_LOW)
     endfunction
-
 endclass

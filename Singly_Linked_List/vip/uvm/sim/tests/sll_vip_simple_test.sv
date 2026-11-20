@@ -91,3 +91,65 @@ class random_test extends base_test;
     endtask
 
 endclass
+
+class sll_vip_boundary_seq extends sll_vip_base_seq;
+    `uvm_object_utils(sll_vip_boundary_seq)
+    sll_vip_config cfg;
+    function new(string name = "boundary_seq"); super.new(name); endfunction
+    task send(sll_op_e op, int data, int addr);
+        sll_vip_seq_item item = sll_vip_seq_item::type_id::create("item");
+        start_item(item);
+        item.op = op; item.data = data; item.addr = addr;
+        finish_item(item);
+    endtask
+    task reset_dut();
+        virtual sll_vip_if vif;
+        if (!uvm_config_db#(virtual sll_vip_if)::get(m_sequencer, "", "sll_vip_vif", vif))
+            `uvm_fatal("CONFIG", "Missing interface")
+        @(negedge vif.clk);
+        vif.rst = 1;
+        repeat (3) @(negedge vif.clk);
+        vif.rst = 0;
+        repeat (2) @(negedge vif.clk);
+    endtask
+    task body();
+        if (!uvm_config_db#(sll_vip_config)::get(m_sequencer, "", "sll_vip_cfg", cfg))
+            `uvm_fatal("CONFIG", "Missing config")
+        send(READ_ADDR, 0, 0);
+        send(DELETE_AT_INDEX, 0, 0);
+        for (int i=0; i<cfg.MAX_NODE; i++) send(INSERT_AT_INDEX, 8'h40+i, cfg.MAX_NODE);
+        send(INSERT_AT_INDEX, 99, 0);
+        for (int i=0; i<cfg.MAX_NODE; i++) send(READ_ADDR, 0, i);
+        send(DELETE_AT_INDEX, 0, 0);
+        send(INSERT_AT_INDEX, 8'hff, 0);
+        send(READ_ADDR, 0, 0);
+        send(DELETE_AT_ADDR, 0, 1);
+        send(INSERT_AT_ADDR, 8'h80, 0);
+        send(DELETE_VALUE, 8'h80, 0);
+        send(INSERT_AT_ADDR, 8'hff, cfg.MAX_NODE);
+        send(DELETE_VALUE, 8'hff, 0);
+        for (int i=0; i<cfg.MAX_NODE; i++) send(READ_ADDR, 0, i);
+        send(DELETE_VALUE, 8'hfe, 0);
+        send(DELETE_AT_ADDR, 0, cfg.MAX_NODE);
+        reset_dut();
+        send(READ_ADDR, 0, 0);
+        send(INSERT_AT_INDEX, 8'ha5, 0);
+        send(READ_ADDR, 0, 0);
+        send(DELETE_AT_ADDR, 0, 0);
+    endtask
+endclass
+
+class boundary_test extends base_test;
+    `uvm_component_utils(boundary_test)
+    function new(string name = "boundary_test", uvm_component parent = null);
+        super.new(name, parent);
+    endfunction
+    task run_phase(uvm_phase phase);
+        sll_vip_boundary_seq seq;
+        phase.raise_objection(this);
+        seq = sll_vip_boundary_seq::type_id::create("boundary");
+        seq.start(env.get_sequencer());
+        #100ns;
+        phase.drop_objection(this);
+    endtask
+endclass

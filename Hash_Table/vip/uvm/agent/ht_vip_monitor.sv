@@ -25,33 +25,30 @@ class ht_vip_monitor extends uvm_monitor;
 
     task run_phase(uvm_phase phase);
         ht_vip_seq_item item;
-
         forever begin
-            @(vif.mon_cb);
-
-            if (vif.mon_cb.op_en) begin
-                item = ht_vip_seq_item::type_id::create("item");
-
-                case (vif.mon_cb.op_sel)
-                    2'b00: item.op = INSERT;
-                    2'b01: item.op = DELETE;
-                    2'b10: item.op = SEARCH;
-                    default: item.op = IDLE;
-                endcase
-
-                item.key = vif.mon_cb.key_in;
-                item.value = vif.mon_cb.value_in;
-
-                @(vif.mon_cb);
-                while (!vif.mon_cb.op_done) @(vif.mon_cb);
-
-                item.result_value = vif.mon_cb.value_out;
-                item.op_done = vif.mon_cb.op_done;
-                item.op_error = vif.mon_cb.op_error;
-                item.collision_count = vif.mon_cb.collision_count;
-
+            @(posedge vif.clk);
+            if (vif.rst) begin
+                item = ht_vip_seq_item::type_id::create("reset");
+                item.reset_seen = 1;
                 ap.write(item);
-                `uvm_info("MONITOR", $sformatf("Observed %s", item.convert2string()), UVM_HIGH)
+                item = null;
+                continue;
+            end
+            // Capture pins at acceptance, before nonblocking RTL updates.
+            if (item == null && vif.op_en && !vif.op_done) begin
+                item = ht_vip_seq_item::type_id::create("request");
+                item.op = ht_op_e'(vif.op_sel);
+                item.key = vif.key_in;
+                item.value = vif.value_in;
+            end
+            #1ns;
+            if (item != null && (vif.op_done)) begin
+                item.result_value = vif.value_out;
+                item.op_error = vif.op_error;
+                item.collision_count = vif.collision_count;
+                item.op_done = vif.op_done;
+                ap.write(item);
+                item = null;
             end
         end
     endtask

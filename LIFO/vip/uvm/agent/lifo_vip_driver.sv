@@ -26,55 +26,25 @@ class lifo_vip_driver extends uvm_driver #(lifo_vip_seq_item);
     endfunction
 
     task run_phase(uvm_phase phase);
+        vif.wr_en = 0;
+        vif.rd_en = 0;
+        vif.data_wr = 0;
+        wait (!vif.rst);
         forever begin
             seq_item_port.get_next_item(req);
-            drive_item(req);
+            @(negedge vif.clk);
+            vif.data_wr = req.data;
+            vif.wr_en = req.op == PUSH || req.bypass;
+            vif.rd_en = req.op == POP || req.bypass;
+            @(posedge vif.clk);
+            req.success = req.bypass || (req.op == PUSH ? !vif.lifo_full : !vif.lifo_empty);
+            #1ns;
+            req.read_data = vif.data_rd;
+            @(negedge vif.clk);
+            vif.wr_en = 0;
+            vif.rd_en = 0;
             seq_item_port.item_done();
         end
-    endtask
-
-    task drive_item(lifo_vip_seq_item item);
-        case (item.op)
-            PUSH: drive_push(item);
-            POP: drive_pop(item);
-            IDLE: drive_idle();
-        endcase
-    endtask
-
-    task drive_push(lifo_vip_seq_item item);
-        @(vif.cb);
-        vif.cb.wr_en <= 1'b1;
-        vif.cb.rd_en <= 1'b0;
-        vif.cb.data_wr <= item.data[cfg.DATA_WIDTH-1:0];
-
-        @(vif.cb);
-        item.full = vif.cb.lifo_full;
-        item.success = !vif.cb.lifo_full;
-
-        vif.cb.wr_en <= 1'b0;
-
-        `uvm_info("DRIVER", $sformatf("Push: data=0x%0h full=%0b", item.data, item.full), UVM_HIGH)
-    endtask
-
-    task drive_pop(lifo_vip_seq_item item);
-        @(vif.cb);
-        vif.cb.rd_en <= 1'b1;
-        vif.cb.wr_en <= 1'b0;
-
-        @(vif.cb);
-        item.empty = vif.cb.lifo_empty;
-        item.read_data = vif.cb.data_rd;
-        item.success = !vif.cb.lifo_empty;
-
-        vif.cb.rd_en <= 1'b0;
-
-        `uvm_info("DRIVER", $sformatf("Pop: data=0x%0h empty=%0b", item.read_data, item.empty), UVM_HIGH)
-    endtask
-
-    task drive_idle();
-        @(vif.cb);
-        vif.cb.wr_en <= 1'b0;
-        vif.cb.rd_en <= 1'b0;
     endtask
 
 endclass

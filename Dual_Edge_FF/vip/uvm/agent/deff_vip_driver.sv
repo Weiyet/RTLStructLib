@@ -22,29 +22,25 @@ class deff_vip_driver extends uvm_driver #(deff_vip_seq_item);
     endfunction
 
     task run_phase(uvm_phase phase);
-        vif.cb.data_in <= '0;
-        vif.cb.pos_edge_latch_en <= '0;
-        vif.cb.neg_edge_latch_en <= '0;
-
+        vif.data_in = 0;
+        vif.pos_edge_latch_en = 0;
+        vif.neg_edge_latch_en = 0;
+        wait (vif.rst_n);
         forever begin
             seq_item_port.get_next_item(req);
-            drive_item(req);
+            @(negedge vif.clk);
+            #2ns;
+            vif.data_in = req.data_in;
+            vif.pos_edge_latch_en = req.pos_edge_latch_en;
+            vif.neg_edge_latch_en = req.neg_edge_latch_en;
+            @(posedge vif.clk);
+            @(negedge vif.clk);
+            #2ns;
+            req.data_out = vif.data_out;
+            vif.pos_edge_latch_en = 0;
+            vif.neg_edge_latch_en = 0;
             seq_item_port.item_done();
         end
-    endtask
-
-    task drive_item(deff_vip_seq_item item);
-        @(vif.cb);
-        vif.cb.data_in <= item.data_in;
-        vif.cb.pos_edge_latch_en <= item.pos_edge_latch_en;
-        vif.cb.neg_edge_latch_en <= item.neg_edge_latch_en;
-
-        // Wait for data to propagate through dual-edge FF
-        @(vif.cb);
-        item.data_out = vif.cb.data_out;
-
-        `uvm_info("DRIVER", $sformatf("Drove: data_in=0x%0h pos_en=0x%0h neg_en=0x%0h -> data_out=0x%0h",
-                  item.data_in, item.pos_edge_latch_en, item.neg_edge_latch_en, item.data_out), UVM_HIGH)
     endtask
 
 endclass

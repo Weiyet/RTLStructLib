@@ -24,4 +24,8 @@ package ht_vip_pkg;
     `include "ht_vip_env.sv"
     `include "ht_vip_base_seq.sv"
 
+    `include "ht_vip_insert_seq.sv"
+    `include "ht_vip_delete_seq.sv"
+    `include "ht_vip_search_seq.sv"
+
 endpackage

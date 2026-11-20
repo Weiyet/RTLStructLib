@@ -6,6 +6,9 @@
 class deff_vip_seq_item extends uvm_sequence_item;
     `uvm_object_utils(deff_vip_seq_item)
 
+    bit rising_edge;
+    bit reset_seen;
+
     rand bit [7:0] data_in;
     rand bit [7:0] pos_edge_latch_en;
     rand bit [7:0] neg_edge_latch_en;

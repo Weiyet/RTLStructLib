@@ -26,40 +26,36 @@ class dll_vip_monitor extends uvm_monitor;
 
     task run_phase(uvm_phase phase);
         dll_vip_seq_item item;
-
         forever begin
-            @(vif.mon_cb);
-
-            if (vif.mon_cb.op_start) begin
-                item = dll_vip_seq_item::type_id::create("item");
-
-                case (vif.mon_cb.op)
-                    3'b000: item.op = READ_ADDR;
-                    3'b001: item.op = INSERT_AT_ADDR;
-                    3'b010: item.op = DELETE_VALUE;
-                    3'b011: item.op = DELETE_AT_ADDR;
-                    3'b101: item.op = INSERT_AT_INDEX;
-                    3'b111: item.op = DELETE_AT_INDEX;
-                    default: item.op = IDLE;
-                endcase
-
-                item.data = vif.mon_cb.data_in;
-                item.addr = vif.mon_cb.addr_in;
-
-                @(vif.mon_cb);
-                while (!vif.mon_cb.op_done) @(vif.mon_cb);
-
-                item.result_data = vif.mon_cb.data_out;
-                item.result_pre_addr = vif.mon_cb.pre_node_addr;
-                item.result_next_addr = vif.mon_cb.next_node_addr;
-                item.op_done = vif.mon_cb.op_done;
-                item.fault = vif.mon_cb.fault;
-                item.current_len = vif.mon_cb.length;
-                item.current_head = vif.mon_cb.head;
-                item.current_tail = vif.mon_cb.tail;
-
+            @(posedge vif.clk);
+            if (vif.rst) begin
+                item = dll_vip_seq_item::type_id::create("reset");
+                item.reset_seen = 1;
                 ap.write(item);
-                `uvm_info("MONITOR", $sformatf("Observed %s", item.convert2string()), UVM_HIGH)
+                item = null;
+                continue;
+            end
+            // Capture pins at acceptance, before nonblocking RTL updates.
+            if (item == null && vif.op_start && !vif.op_done) begin
+                item = dll_vip_seq_item::type_id::create("request");
+                item.op = dll_op_e'(vif.op);
+                item.data = vif.data_in;
+                item.addr = vif.addr_in;
+            end
+            #1ns;
+            if (item != null && (vif.op_done)) begin
+                item.result_data = vif.data_out;
+                item.result_next_addr = vif.next_node_addr;
+                item.fault = vif.fault;
+                item.current_len = vif.length;
+                item.current_head = vif.head;
+                item.current_tail = vif.tail;
+                item.full = vif.full;
+                item.empty = vif.empty;
+                item.result_pre_addr = vif.pre_node_addr;
+                item.op_done = vif.op_done;
+                ap.write(item);
+                item = null;
             end
         end
     endtask

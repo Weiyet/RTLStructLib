@@ -29,45 +29,19 @@ class lifo_vip_monitor extends uvm_monitor;
 
     task run_phase(uvm_phase phase);
         lifo_vip_seq_item item;
-
         forever begin
-            @(vif.mon_cb);
-
-            // Detect push operation
-            if (vif.mon_cb.wr_en && !vif.mon_cb.rd_en) begin
-                item = lifo_vip_seq_item::type_id::create("item");
-                item.op = PUSH;
-                item.data = vif.mon_cb.data_wr;
-                item.full = vif.mon_cb.lifo_full;
-                item.success = !vif.mon_cb.lifo_full;
-                ap.write(item);
-                `uvm_info("MONITOR", $sformatf("Observed PUSH: data=0x%0h full=%0b", item.data, item.full), UVM_HIGH)
-            end
-
-            // Detect pop operation
-            else if (vif.mon_cb.rd_en && !vif.mon_cb.wr_en) begin
-                @(vif.mon_cb); // Wait one cycle to capture read data
-                item = lifo_vip_seq_item::type_id::create("item");
-                item.op = POP;
-                item.read_data = vif.mon_cb.data_rd;
-                item.empty = vif.mon_cb.lifo_empty;
-                item.success = !vif.mon_cb.lifo_empty;
-                ap.write(item);
-                `uvm_info("MONITOR", $sformatf("Observed POP: data=0x%0h empty=%0b", item.read_data, item.empty), UVM_HIGH)
-            end
-
-            // Detect simultaneous push/pop (bypass)
-            else if (vif.mon_cb.wr_en && vif.mon_cb.rd_en) begin
-                @(vif.mon_cb);
-                item = lifo_vip_seq_item::type_id::create("item");
-                item.op = PUSH; // Record as push for scoreboard
-                item.data = vif.mon_cb.data_wr;
-                item.read_data = vif.mon_cb.data_rd; // Bypass data
-                item.full = vif.mon_cb.lifo_full;
-                item.empty = vif.mon_cb.lifo_empty;
-                ap.write(item);
-                `uvm_info("MONITOR", $sformatf("Observed BYPASS: wr=0x%0h rd=0x%0h", item.data, item.read_data), UVM_HIGH)
-            end
+            @(posedge vif.clk);
+            item = lifo_vip_seq_item::type_id::create("cycle");
+            item.reset_seen = vif.rst;
+            item.op = vif.wr_en ? PUSH : (vif.rd_en ? POP : IDLE);
+            item.bypass = vif.wr_en && vif.rd_en;
+            item.data = vif.data_wr;
+            item.success = item.bypass || (item.op == PUSH ? !vif.lifo_full : !vif.lifo_empty);
+            #1ns;
+            item.read_data = vif.data_rd;
+            item.full = vif.lifo_full;
+            item.empty = vif.lifo_empty;
+            ap.write(item);
         end
     endtask
 

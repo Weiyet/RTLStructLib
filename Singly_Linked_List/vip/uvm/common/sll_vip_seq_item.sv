@@ -6,6 +6,9 @@
 class sll_vip_seq_item extends uvm_sequence_item;
     `uvm_object_utils(sll_vip_seq_item)
 
+    bit reset_seen;
+    bit full, empty;
+
     rand sll_op_e op;
     rand bit [31:0] data;
     rand bit [15:0] addr;

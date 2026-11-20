@@ -10,6 +10,8 @@
 class list_vip_scoreboard extends uvm_scoreboard;
     `uvm_component_utils(list_vip_scoreboard)
 
+    int checked_transactions;
+
     uvm_analysis_imp #(list_vip_seq_item, list_vip_scoreboard) imp;
 
     list_vip_config cfg;
@@ -34,6 +36,11 @@ class list_vip_scoreboard extends uvm_scoreboard;
     endfunction
 
     function void write(list_vip_seq_item item);
+        if (item.reset_seen) begin
+            list_model.delete();
+            return;
+        end
+        checked_transactions++;
         case (item.op)
             READ: check_read(item);
             INSERT: check_insert(item);
@@ -159,9 +166,12 @@ class list_vip_scoreboard extends uvm_scoreboard;
     endfunction
 
     function void check_find_all(list_vip_seq_item item);
-        // Note: Simplified check - full FIND_ALL requires tracking multiple results
+        int expected_matches[$];
         search_count++;
-        `uvm_info("SCOREBOARD", $sformatf("FIND_ALL(0x%0h): Completed", item.data), UVM_MEDIUM)
+        foreach (list_model[i])
+            if (list_model[i] == item.data) expected_matches.push_back(i);
+        if (item.matched_indices != expected_matches || item.op_error != (expected_matches.size() == 0))
+            `uvm_error("FIND_ALL", $sformatf("Expected matches %p, actual %p, error=%0b", expected_matches, item.matched_indices, item.op_error))
     endfunction
 
     function void check_sum(list_vip_seq_item item);
@@ -194,6 +204,9 @@ class list_vip_scoreboard extends uvm_scoreboard;
     endfunction
 
     function void report_phase(uvm_phase phase);
+        if (checked_transactions == 0)
+            `uvm_fatal("EMPTY_TEST", "No monitored transactions reached the scoreboard")
+        `uvm_info("RESULT", $sformatf("VIP PASSED: %0d transactions", checked_transactions), UVM_LOW)
         super.report_phase(phase);
         `uvm_info("SCOREBOARD", "==============================================", UVM_LOW)
         `uvm_info("SCOREBOARD", $sformatf("Insert Count: %0d", insert_count), UVM_LOW)

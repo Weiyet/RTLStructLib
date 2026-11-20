@@ -23,11 +23,11 @@ class dll_vip_driver extends uvm_driver #(dll_vip_seq_item);
     endfunction
 
     task run_phase(uvm_phase phase);
-        vif.cb.op <= 3'b000;
-        vif.cb.op_start <= 1'b0;
-        vif.cb.data_in <= '0;
-        vif.cb.addr_in <= '0;
-
+        vif.op_start = 0;
+        vif.op = 0;
+        vif.data_in = 0;
+        vif.addr_in = 0;
+        wait (!vif.rst);
         forever begin
             seq_item_port.get_next_item(req);
             drive_item(req);
@@ -36,29 +36,37 @@ class dll_vip_driver extends uvm_driver #(dll_vip_seq_item);
     endtask
 
     task drive_item(dll_vip_seq_item item);
-        @(vif.cb);
-        vif.cb.op <= item.op;
-        vif.cb.op_start <= 1'b1;
-        vif.cb.data_in <= item.data[cfg.DATA_WIDTH-1:0];
-        vif.cb.addr_in <= item.addr[$clog2(cfg.MAX_NODE+1)-1:0];
-
-        @(vif.cb);
-        wait(vif.cb.op_done);
-
-        item.result_data = vif.cb.data_out;
-        item.result_pre_addr = vif.cb.pre_node_addr;
-        item.result_next_addr = vif.cb.next_node_addr;
-        item.op_done = vif.cb.op_done;
-        item.fault = vif.cb.fault;
-        item.current_len = vif.cb.length;
-        item.current_head = vif.cb.head;
-        item.current_tail = vif.cb.tail;
-
-        @(vif.cb);
-        vif.cb.op_start <= 1'b0;
-
-        `uvm_info("DRIVER", $sformatf("%s: addr=%0d data=0x%0h fault=%0b",
-                  item.op.name(), item.addr, item.data, item.fault), UVM_HIGH)
+        if (item.op == IDLE) begin
+            @(negedge vif.clk);
+            return;
+        end
+        @(negedge vif.clk);
+        wait (!vif.rst);
+        vif.op = item.op;
+        vif.data_in = item.data;
+        vif.addr_in = item.addr;
+        vif.op_start = 1;
+        @(posedge vif.clk);
+        #1ns;
+        @(negedge vif.clk);
+        vif.op_start = 0;
+        while (!(vif.op_done) && !vif.rst) begin
+            @(posedge vif.clk);
+            #1ns;
+        end
+                item.result_data = vif.data_out;
+                item.result_next_addr = vif.next_node_addr;
+                item.fault = vif.fault;
+                item.current_len = vif.length;
+                item.current_head = vif.head;
+                item.current_tail = vif.tail;
+                item.full = vif.full;
+                item.empty = vif.empty;
+                item.result_pre_addr = vif.pre_node_addr;
+        item.op_done = vif.op_done;
+        // Leave one cleanup clock after completion before a new request.
+        @(posedge vif.clk);
+        @(negedge vif.clk);
     endtask
 
 endclass

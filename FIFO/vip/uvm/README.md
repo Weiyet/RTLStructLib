@@ -1,102 +1,56 @@
-# Development In Progress!!
+# FIFO SystemVerilog UVM VIP
 
-# FIFO (Queue) UVM VIP (Verification IP) User Guide
-## 📁 Directory Structure
+## Run with Verilator
 
-```
-uvm/
-├── src/                           # Core VIP source files
-│   ├── fifo_vip_pkg.sv           # Main package + types/enums
-│   ├── fifo_vip_config.sv        # Configuration class
-│   └── fifo_vip_seq_item.sv      # Transaction definitions
-├── agent/                         # Agent layer components
-│   ├── fifo_vip_driver.sv        # Driver implementation
-│   ├── fifo_vip_monitor.sv       # Monitor implementation
-│   ├── fifo_vip_sequencer.sv     # Sequencer (simple)
-│   └── fifo_vip_agent.sv         # Agent wrapper
-├── env/                          # Environment layer
-│   ├── fifo_vip_env.sv           # Environment
-│   └── fifo_vip_scoreboard.sv    # Checking components
-├── sequences/                     # Test sequences
-│   ├── fifo_vip_base_seq.sv      # Base sequence
-│   ├── fifo_vip_write_req_seq.sv # Write sequences
-│   └── fifo_vip_read_req_seq.sv  # Read sequences
-├── interface/                     # Interface definition
-│   └── fifo_vip_if.sv            # Virtual interface
-└── tb/                           # Testbench
-    ├── tests/
-    │   └── base_test.sv          # Base test + simple_test
-    └── tb_top.sv                 # Testbench top module
+Use Linux/WSL, GNU Make, Python 3, a C++20 compiler, GNU `timeout`, an SMT
+solver (`z3` on `PATH`) for constrained randomization, and Verilator 5.054 or newer. Set
+`VERILATOR` and `UVM_HOME` using the tested DPI-enabled UVM setup in the
+[Priority Queue guide](../../../Priority_Queue/vip/uvm/README.md#standalone-simulation).
+
+From the repository root:
+
+```sh
+make -C FIFO/vip/uvm sim TEST=simple_test SEED=123
+make -C FIFO/vip/uvm run TEST=boundary_test SEED=19
 ```
 
-## 🚀 Quick Start
+The local Makefile includes `../../../Utils/vip/Makefile`. `compile` builds,
+`sim` builds and runs, and `run` reuses the executable. Rebuild after source
+changes. `lint` checks elaboration without running the DUT. For smaller C++
+compilation units, pass `VERILATOR_FLAGS="--output-groups 16"`.
 
-**Step 1:** Update Agent Interface with correct internal signals (refer to `fifo_vip_if.sv`) in your top level testbench:
-```systemverilog
-// Update interface signal widths and connections in tb_top.sv
-fifo_vip_if dut_if;
-assign dut_if.rst = u_fifo.rst;
-assign dut_if.rd_clk = u_fifo.rd_clk;
-assign dut_if.wr_clk = u_fifo.wr_clk;
-assign dut_if.data_wr = u_fifo.data_wr;
-assign dut_if.wr_en = u_fifo.wr_en;
-assign dut_if.fifo_full = u_fifo.fifo_full;
-assign dut_if.data_rd = u_fifo.data_rd;
-assign dut_if.rd_en = u_fifo.rd_en;
-assign dut_if.fifo_empty = u_fifo.fifo_empty;
+Logs are `SIM_BUILD/compile.log` and `SIM_BUILD/sim.log` (default `sim_build`).
+`JOBS`, `SIM_TIMEOUT` (wall-clock seconds), and `TB_TIMEOUT_CYCLES` are
+configurable. Simulation failure, watchdog expiry, UVM errors/fatals, and
+missing nonzero scoreboard completion all fail Make.
 
-// Set interface in config DB
-uvm_config_db#(virtual fifo_vip_if)::set(null, "*", "fifo_vip_vif", dut_if);
-```
+## Tests and checking
 
-**Step 2:** Update DUT parameters/configuration (refer to `fifo_vip_config.sv`) in your test:
-```systemverilog
-// In your test's build_phase()
-cfg = fifo_vip_config::type_id::create("cfg");
-cfg.DEPTH = 16;        // Match your FIFO depth
-cfg.DATA_WIDTH = 8;    // Match your data width
-cfg.ASYNC = 1;         // 1=async clocks, 0=sync
-cfg.RD_BUFFER = 1;     // 1=buffered read, 0=combinational
+Registered scenarios: `simple_test`, `boundary_test`.
+`boundary_test` includes directed edge cases and reset during the scenario;
+`SEED` controls randomized stimulus.
 
-// Set config in database
-uvm_config_db#(fifo_vip_config)::set(this, "*", "fifo_vip_cfg", cfg);
-```
+Accepted write/read ordering and data integrity, full/empty rejection traffic, settled full/empty flags after fill/drain, repeated pointer wrap, concurrent clocks, and reset with queued data. The queue model tracks accepted transfers; this is not a metastability or physical CDC check.
 
-**Step 3:** Agent instantiation in your environment (refer to `fifo_vip_env.sv`):
-```systemverilog
-// Create FIFO VIP environment
-fifo_env = fifo_vip_env::type_id::create("fifo_env", this);
-````
+Standalone configuration: **8-bit data, DEPTH=16, ASYNC=1, RD_BUFFER=1; write/read periods 20/32 ns**. The interface widths, DUT parameters
+in `sim/tb_top.sv`, and configuration in `sim/tests/fifo_vip_base_test.sv`
+must agree when adapting the bench. Changing the class configuration alone
+does not resize the interface or RTL. Verilator simulation is two-state;
+these tests do not check X/Z propagation.
 
-##🚀 Available Sequences
+## Reuse
 
-**Write Sequence:**
-```systemverilog
-fifo_vip_write_req_seq wr_seq = fifo_vip_write_req_seq::type_id::create("wr_seq");
-wr_seq.num_writes = 10;
-wr_seq.start(env.get_wr_sequencer());
-```
+Use the source order and include directories in `files.f`. Connect
+`fifo_vip_if` to the DUT, publish it under `fifo_vip_vif`, and publish a
+matching `fifo_vip_config` under `fifo_vip_cfg` through `uvm_config_db`.
+Instantiate `fifo_vip_env` and start sequences on `env.get_wr_sequencer()` / `env.get_rd_sequencer()`.
+The enclosing bench supplies clocks, reset, and UVM objections. See the
+[block README](../../README.md) for the hardware contract.
 
-**Read Sequence:**
-```systemverilog
-fifo_vip_read_req_seq rd_seq = fifo_vip_read_req_seq::type_id::create("rd_seq");
-rd_seq.num_reads = 10;
-rd_seq.start(env.get_rd_sequencer());
-```
+## Validation
 
-## ✅ Self-Checking Features
-- ✅ Data integrity through FIFO
-- ✅ Write when full behavior
-- ✅ Read when empty behavior  
-- ✅ FIFO flag correctness
-- ✅ Transaction success/failure
-
-## 🚨 Common Issues & Solutions
-
-### Future Work
-Add assertions to `fifo_vip_if.sv` or create a separate checker component.
-Add coverage 
-
-**Happy Verifying! 🚀**
-
-*This VIP follows UVM best practices while keeping complexity minimal for ease of use and learning.*
+Verilator 5.054 with the pinned UVM library passed 4 RTL simulations
+(all scenarios above, seeds 123 and 19), checking 508 monitored
+transactions/edges in total with zero UVM errors or fatals. Empty-test,
+unknown-test, and forced-watchdog runs each returned failure as expected.
+These results cover the standalone configuration above.

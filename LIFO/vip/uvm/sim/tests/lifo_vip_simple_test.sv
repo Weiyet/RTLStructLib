@@ -42,7 +42,6 @@ class simple_test extends base_test;
 
 endclass
 
-
 //////////////////////////////////////////////////////////////////////////////////
 // Random operations test - similar to tb/sv/tb.sv behavior
 //////////////////////////////////////////////////////////////////////////////////
@@ -92,7 +91,6 @@ class random_test extends base_test;
 
 endclass
 
-
 //////////////////////////////////////////////////////////////////////////////////
 // Full/Empty test - tests boundary conditions
 //////////////////////////////////////////////////////////////////////////////////
@@ -130,4 +128,59 @@ class full_empty_test extends base_test;
         phase.drop_objection(this);
     endtask
 
+endclass
+
+class lifo_vip_boundary_seq extends lifo_vip_base_seq;
+    `uvm_object_utils(lifo_vip_boundary_seq)
+    lifo_vip_config cfg;
+    function new(string name = "boundary_seq"); super.new(name); endfunction
+    task send(lifo_op_e op, int data=0, bit bypass=0);
+        lifo_vip_seq_item item = lifo_vip_seq_item::type_id::create("item");
+        start_item(item);
+        item.op = op; item.data = data; item.bypass = bypass;
+        finish_item(item);
+    endtask
+    task reset_dut();
+        virtual lifo_vip_if vif;
+        if (!uvm_config_db#(virtual lifo_vip_if)::get(m_sequencer, "", "lifo_vip_vif", vif))
+            `uvm_fatal("CONFIG", "Missing interface")
+        @(negedge vif.clk);
+        vif.rst = 1;
+        repeat (3) @(negedge vif.clk);
+        vif.rst = 0;
+        repeat (2) @(negedge vif.clk);
+    endtask
+    task body();
+        if (!uvm_config_db#(lifo_vip_config)::get(m_sequencer, "", "lifo_vip_cfg", cfg))
+            `uvm_fatal("CONFIG", "Missing config")
+        send(POP);
+        send(PUSH, 42, 1);
+        repeat (2) begin
+            for (int i=0; i<cfg.DEPTH; i++) send(PUSH, i+1);
+            send(PUSH, 99);
+            send(PUSH, 8'hff, 1);
+            for (int i=0; i<cfg.DEPTH+1; i++) send(POP);
+        end
+        send(PUSH, 23);
+        send(PUSH, 24);
+        reset_dut();
+        send(POP);
+        send(PUSH, 8'ha5);
+        send(POP);
+    endtask
+endclass
+
+class boundary_test extends base_test;
+    `uvm_component_utils(boundary_test)
+    function new(string name = "boundary_test", uvm_component parent = null);
+        super.new(name, parent);
+    endfunction
+    task run_phase(uvm_phase phase);
+        lifo_vip_boundary_seq seq;
+        phase.raise_objection(this);
+        seq = lifo_vip_boundary_seq::type_id::create("boundary");
+        seq.start(env.get_sequencer());
+        #100ns;
+        phase.drop_objection(this);
+    endtask
 endclass

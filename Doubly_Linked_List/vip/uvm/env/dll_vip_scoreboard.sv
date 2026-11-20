@@ -1,19 +1,11 @@
-//////////////////////////////////////////////////////////////////////////////////
-// Create Date: 01/04/2026
-// Module Name: dll_vip_scoreboard
-// Description: Scoreboard for Doubly Linked List VIP with linked list model
-//////////////////////////////////////////////////////////////////////////////////
-
+// Independent ordered-node model with deterministic lowest-free-address allocation.
 class dll_vip_scoreboard extends uvm_scoreboard;
     `uvm_component_utils(dll_vip_scoreboard)
-
     uvm_analysis_imp #(dll_vip_seq_item, dll_vip_scoreboard) imp;
-
     dll_vip_config cfg;
-    int list_data[$];
-    int list_addr[$];
-    int error_count;
-    int insert_count, delete_count, read_count;
+    int data_model[$], address_model[$];
+    int last_data, last_next, last_prev;
+    int checked_transactions;
 
     function new(string name = "dll_vip_scoreboard", uvm_component parent = null);
         super.new(name, parent);
@@ -23,113 +15,95 @@ class dll_vip_scoreboard extends uvm_scoreboard;
     function void build_phase(uvm_phase phase);
         super.build_phase(phase);
         if (!uvm_config_db#(dll_vip_config)::get(this, "", "dll_vip_cfg", cfg))
-            `uvm_fatal("SCOREBOARD", "No config")
+            `uvm_fatal("CONFIG", "Missing linked-list configuration")
+        reset_model();
+    endfunction
+
+    function void reset_model();
+        data_model.delete();
+        address_model.delete();
+        last_data = 0;
+        last_next = cfg.MAX_NODE;
+        last_prev = cfg.MAX_NODE;
+    endfunction
+
+    function int address_index(int address);
+        foreach (address_model[i]) if (address_model[i] == address) return i;
+        return -1;
+    endfunction
+
+    function int free_address();
+        for (int address = 0; address < cfg.MAX_NODE; address++)
+            if (address_index(address) == -1) return address;
+        return cfg.MAX_NODE;
     endfunction
 
     function void write(dll_vip_seq_item item);
+        int index, position, address, expected_head, expected_tail;
+        bit expected_fault;
+        if (item.reset_seen) begin
+            reset_model();
+            return;
+        end
+        checked_transactions++;
+        index = address_index(item.addr);
+        expected_fault = 0;
         case (item.op)
-            READ_ADDR: check_read(item);
-            INSERT_AT_ADDR, INSERT_AT_INDEX: check_insert(item);
-            DELETE_VALUE, DELETE_AT_ADDR, DELETE_AT_INDEX: check_delete(item);
-        endcase
-
-        if (item.current_len != list_data.size()) begin
-            `uvm_error("SCOREBOARD", $sformatf("Length mismatch! Expected=%0d Actual=%0d",
-                       list_data.size(), item.current_len))
-            error_count++;
-        end
-    endfunction
-
-    function void check_read(dll_vip_seq_item item);
-        int index;
-        read_count++;
-
-        index = find_addr_index(item.addr);
-        if (index == -1) begin
-            if (!item.fault)
-                error_count++;
-        end else begin
-            if (item.result_data != list_data[index]) begin
-                `uvm_error("SCOREBOARD", $sformatf("READ mismatch! Expected=0x%0h Actual=0x%0h",
-                           list_data[index], item.result_data))
-                error_count++;
-            end
-        end
-    endfunction
-
-    function void check_insert(dll_vip_seq_item item);
-        int next_addr;
-        insert_count++;
-
-        if (list_data.size() >= cfg.MAX_NODE) begin
-            if (!item.fault) error_count++;
-        end else if (!item.fault) begin
-            next_addr = find_next_free_addr();
-            if (item.op == INSERT_AT_INDEX) begin
-                if (item.addr >= list_data.size()) begin
-                    list_data.push_back(item.data);
-                    list_addr.push_back(next_addr);
-                end else begin
-                    list_data.insert(item.addr, item.data);
-                    list_addr.insert(item.addr, next_addr);
+            READ_ADDR: begin
+                expected_fault = index < 0;
+                if (!expected_fault) begin
+                    last_data = data_model[index];
+                    last_next = index+1 < address_model.size() ? address_model[index+1] : cfg.MAX_NODE;
+                    last_prev = index > 0 ? address_model[index-1] : cfg.MAX_NODE;
                 end
-            end else begin
-                list_data.push_back(item.data);
-                list_addr.push_back(next_addr);
             end
-            `uvm_info("SCOREBOARD", $sformatf("INSERT: data=0x%0h addr=%0d len=%0d",
-                      item.data, next_addr, list_data.size()), UVM_MEDIUM)
-        end
-    endfunction
-
-    function void check_delete(dll_vip_seq_item item);
-        int index;
-        delete_count++;
-
-        if (item.op == DELETE_VALUE) begin
-            index = list_data.find_first_index(x) with (x == item.data);
-            if (index.size() > 0 && !item.fault) begin
-                list_data.delete(index[0]);
-                list_addr.delete(index[0]);
+            INSERT_AT_ADDR, INSERT_AT_INDEX: begin
+                position = item.op == INSERT_AT_INDEX ? int'(item.addr) :
+                           (item.addr >= cfg.MAX_NODE ? data_model.size() : index);
+                expected_fault = data_model.size() == cfg.MAX_NODE || position < 0;
+                if (!expected_fault) begin
+                    address = free_address();
+                    if (position >= data_model.size()) begin
+                        data_model.push_back(item.data);
+                        address_model.push_back(address);
+                    end else begin
+                        data_model.insert(position, item.data);
+                        address_model.insert(position, address);
+                    end
+                end
             end
-        end else begin
-            index = item.op == DELETE_AT_INDEX ? item.addr : find_addr_index(item.addr);
-            if (index != -1 && index < list_data.size() && !item.fault) begin
-                list_data.delete(index);
-                list_addr.delete(index);
+            DELETE_VALUE, DELETE_AT_ADDR, DELETE_AT_INDEX: begin
+                position = item.op == DELETE_AT_INDEX ? int'(item.addr) : index;
+                if (item.op == DELETE_VALUE) begin
+                    position = -1;
+                    foreach (data_model[i]) if (data_model[i] == item.data) begin
+                        position = i;
+                        break;
+                    end
+                end
+                expected_fault = position < 0 || position >= data_model.size();
+                if (!expected_fault) begin
+                    data_model.delete(position);
+                    address_model.delete(position);
+                end
             end
-        end
-        `uvm_info("SCOREBOARD", $sformatf("DELETE: len=%0d", list_data.size()), UVM_MEDIUM)
-    endfunction
-
-    function int find_addr_index(int addr);
-        for (int i = 0; i < list_addr.size(); i++) begin
-            if (list_addr[i] == addr) return i;
-        end
-        return -1;
-    endfunction
-
-    function int find_next_free_addr();
-        for (int i = 0; i < cfg.MAX_NODE; i++) begin
-            if (find_addr_index(i) == -1) return i;
-        end
-        return -1;
+            default: expected_fault = 1;
+        endcase
+        expected_head = data_model.size() ? address_model[0] : cfg.MAX_NODE;
+        expected_tail = data_model.size() ? address_model[$] : cfg.MAX_NODE;
+        if (item.fault != expected_fault)
+            `uvm_error("FAULT", $sformatf("op=%s addr=%0d expected=%0b actual=%0b", item.op.name(), item.addr, expected_fault, item.fault))
+        if (item.current_len != data_model.size() || item.current_head != expected_head || item.current_tail != expected_tail)
+            `uvm_error("STATE", $sformatf("Expected length/head/tail=%0d/%0d/%0d, actual=%0d/%0d/%0d", data_model.size(), expected_head, expected_tail, item.current_len, item.current_head, item.current_tail))
+        if (item.full != (data_model.size() == cfg.MAX_NODE) || item.empty != (data_model.size() == 0))
+            `uvm_error("FLAGS", "Full/empty differs from model occupancy")
+        if (item.result_data != last_data || item.result_next_addr != last_next || item.result_pre_addr != last_prev)
+            `uvm_error("READ", $sformatf("Read/held outputs differ: expected data/next=%0h/%0d, actual=%0h/%0d", last_data, last_next, item.result_data, item.result_next_addr))
     endfunction
 
     function void report_phase(uvm_phase phase);
-        super.report_phase(phase);
-        `uvm_info("SCOREBOARD", "==============================================", UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Insert Count: %0d", insert_count), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Delete Count: %0d", delete_count), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Read Count: %0d", read_count), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Error Count: %0d", error_count), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Final List Size: %0d", list_data.size()), UVM_LOW)
-        `uvm_info("SCOREBOARD", "==============================================", UVM_LOW)
-
-        if (error_count > 0)
-            `uvm_error("SCOREBOARD", $sformatf("Test FAILED with %0d errors", error_count))
-        else
-            `uvm_info("SCOREBOARD", "Test PASSED - No errors detected", UVM_LOW)
+        if (checked_transactions == 0)
+            `uvm_fatal("EMPTY_TEST", "No completed transactions checked")
+        `uvm_info("RESULT", $sformatf("VIP PASSED: %0d transactions", checked_transactions), UVM_LOW)
     endfunction
-
 endclass

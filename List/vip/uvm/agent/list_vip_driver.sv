@@ -26,12 +26,11 @@ class list_vip_driver extends uvm_driver #(list_vip_seq_item);
     endfunction
 
     task run_phase(uvm_phase phase);
-        // Initialize signals
-        vif.cb.op_sel <= 3'b000;
-        vif.cb.op_en <= 1'b0;
-        vif.cb.data_in <= '0;
-        vif.cb.index_in <= '0;
-
+        vif.op_en = 0;
+        vif.op_sel = 0;
+        vif.data_in = 0;
+        vif.index_in = 0;
+        wait (!vif.rst);
         forever begin
             seq_item_port.get_next_item(req);
             drive_item(req);
@@ -40,173 +39,31 @@ class list_vip_driver extends uvm_driver #(list_vip_seq_item);
     endtask
 
     task drive_item(list_vip_seq_item item);
-        case (item.op)
-            READ: drive_read(item);
-            INSERT: drive_insert(item);
-            DELETE: drive_delete(item);
-            FIND_1ST: drive_find_1st(item);
-            FIND_ALL: drive_find_all(item);
-            SUM: drive_sum(item);
-            SORT_ASC: drive_sort_asc(item);
-            SORT_DES: drive_sort_des(item);
-            IDLE: drive_idle();
-        endcase
-    endtask
-
-    task drive_read(list_vip_seq_item item);
-        @(vif.cb);
-        vif.cb.op_sel <= 3'b000;
-        vif.cb.op_en <= 1'b1;
-        vif.cb.index_in <= item.index;
-
-        @(vif.cb);
-        wait(vif.cb.op_done);
-
-        item.result_data = vif.cb.data_out;
-        item.op_done = vif.cb.op_done;
-        item.op_error = vif.cb.op_error;
-        item.current_len = vif.cb.len;
-
-        @(vif.cb);
-        vif.cb.op_en <= 1'b0;
-
-        `uvm_info("DRIVER", $sformatf("READ[%0d]: data=0x%0h error=%0b", item.index, item.result_data, item.op_error), UVM_HIGH)
-    endtask
-
-    task drive_insert(list_vip_seq_item item);
-        @(vif.cb);
-        vif.cb.op_sel <= 3'b001;
-        vif.cb.op_en <= 1'b1;
-        vif.cb.index_in <= item.index;
-        vif.cb.data_in <= item.data;
-
-        @(vif.cb);
-        wait(vif.cb.op_done);
-
-        item.op_done = vif.cb.op_done;
-        item.op_error = vif.cb.op_error;
-        item.current_len = vif.cb.len;
-
-        @(vif.cb);
-        vif.cb.op_en <= 1'b0;
-
-        `uvm_info("DRIVER", $sformatf("INSERT[%0d]: data=0x%0h error=%0b len=%0d", item.index, item.data, item.op_error, item.current_len), UVM_HIGH)
-    endtask
-
-    task drive_delete(list_vip_seq_item item);
-        @(vif.cb);
-        vif.cb.op_sel <= 3'b111;
-        vif.cb.op_en <= 1'b1;
-        vif.cb.index_in <= item.index;
-
-        @(vif.cb);
-        wait(vif.cb.op_done);
-
-        item.op_done = vif.cb.op_done;
-        item.op_error = vif.cb.op_error;
-        item.current_len = vif.cb.len;
-
-        @(vif.cb);
-        vif.cb.op_en <= 1'b0;
-
-        `uvm_info("DRIVER", $sformatf("DELETE[%0d]: error=%0b len=%0d", item.index, item.op_error, item.current_len), UVM_HIGH)
-    endtask
-
-    task drive_find_1st(list_vip_seq_item item);
-        @(vif.cb);
-        vif.cb.op_sel <= 3'b011;
-        vif.cb.op_en <= 1'b1;
-        vif.cb.data_in <= item.data;
-
-        @(vif.cb);
-        wait(vif.cb.op_done);
-
-        item.result_data = vif.cb.data_out;
-        item.op_done = vif.cb.op_done;
-        item.op_error = vif.cb.op_error;
-
-        @(vif.cb);
-        vif.cb.op_en <= 1'b0;
-
-        `uvm_info("DRIVER", $sformatf("FIND_1ST(0x%0h): index=%0d error=%0b", item.data, item.result_data, item.op_error), UVM_HIGH)
-    endtask
-
-    task drive_find_all(list_vip_seq_item item);
-        @(vif.cb);
-        vif.cb.op_sel <= 3'b010;
-        vif.cb.op_en <= 1'b1;
-        vif.cb.data_in <= item.data;
-
-        // FIND_ALL can take multiple cycles and return multiple indices
-        @(vif.cb);
-        while (vif.cb.op_in_progress || !vif.cb.op_done) begin
-            @(vif.cb);
+        if (item.op == IDLE) begin
+            @(negedge vif.clk);
+            return;
         end
-
-        item.result_data = vif.cb.data_out;
-        item.op_done = vif.cb.op_done;
-        item.op_error = vif.cb.op_error;
-
-        vif.cb.op_en <= 1'b0;
-
-        `uvm_info("DRIVER", $sformatf("FIND_ALL(0x%0h): completed error=%0b", item.data, item.op_error), UVM_HIGH)
-    endtask
-
-    task drive_sum(list_vip_seq_item item);
-        @(vif.cb);
-        vif.cb.op_sel <= 3'b100;
-        vif.cb.op_en <= 1'b1;
-
-        @(vif.cb);
-        wait(vif.cb.op_done);
-
-        item.result_data = vif.cb.data_out;
-        item.op_done = vif.cb.op_done;
-        item.op_error = vif.cb.op_error;
-
-        @(vif.cb);
-        vif.cb.op_en <= 1'b0;
-
-        `uvm_info("DRIVER", $sformatf("SUM: result=%0d error=%0b", item.result_data, item.op_error), UVM_HIGH)
-    endtask
-
-    task drive_sort_asc(list_vip_seq_item item);
-        @(vif.cb);
-        vif.cb.op_sel <= 3'b101;
-        vif.cb.op_en <= 1'b1;
-
-        @(vif.cb);
-        wait(vif.cb.op_done);
-
-        item.op_done = vif.cb.op_done;
-        item.op_error = vif.cb.op_error;
-
-        @(vif.cb);
-        vif.cb.op_en <= 1'b0;
-
-        `uvm_info("DRIVER", "SORT_ASC: completed", UVM_HIGH)
-    endtask
-
-    task drive_sort_des(list_vip_seq_item item);
-        @(vif.cb);
-        vif.cb.op_sel <= 3'b110;
-        vif.cb.op_en <= 1'b1;
-
-        @(vif.cb);
-        wait(vif.cb.op_done);
-
-        item.op_done = vif.cb.op_done;
-        item.op_error = vif.cb.op_error;
-
-        @(vif.cb);
-        vif.cb.op_en <= 1'b0;
-
-        `uvm_info("DRIVER", "SORT_DES: completed", UVM_HIGH)
-    endtask
-
-    task drive_idle();
-        @(vif.cb);
-        vif.cb.op_en <= 1'b0;
+        @(negedge vif.clk);
+        wait (!vif.rst);
+        vif.op_sel = item.op;
+        vif.data_in = item.data;
+        vif.index_in = item.index;
+        vif.op_en = 1;
+        @(posedge vif.clk);
+        #1ns;
+        @(negedge vif.clk);
+        vif.op_en = 0;
+        while (!(vif.op_done && !vif.op_in_progress) && !vif.rst) begin
+            @(posedge vif.clk);
+            #1ns;
+        end
+                item.result_data = vif.data_out;
+                item.op_error = vif.op_error;
+                item.current_len = vif.len;
+        item.op_done = vif.op_done;
+        // Leave one cleanup clock after completion before a new request.
+        @(posedge vif.clk);
+        @(negedge vif.clk);
     endtask
 
 endclass

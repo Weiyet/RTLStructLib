@@ -21,6 +21,7 @@ module tb_top;
     initial begin
         dut_if.rst = 1;
         repeat(5) @(posedge clk);
+        @(negedge clk);
         dut_if.rst = 0;
     end
 
@@ -47,14 +48,15 @@ module tb_top;
 
     initial begin
         uvm_config_db#(virtual sll_vip_if)::set(null, "*", "sll_vip_vif", dut_if);
-        $dumpfile("waves.vcd");
-        $dumpvars(0, tb_top);
+
         run_test();
     end
 
     initial begin
-        #100us;
-        $finish;
+        int timeout_cycles = 100000;
+        void'($value$plusargs("TB_TIMEOUT_CYCLES=%d", timeout_cycles));
+        repeat (timeout_cycles) @(posedge clk);
+        `uvm_fatal("TIMEOUT", "UVM test did not complete")
     end
 
 endmodule

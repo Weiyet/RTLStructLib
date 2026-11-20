@@ -22,4 +22,7 @@ package table_vip_pkg;
     `include "table_vip_env.sv"
     `include "table_vip_base_seq.sv"
 
+    `include "table_vip_write_seq.sv"
+    `include "table_vip_read_seq.sv"
+
 endpackage

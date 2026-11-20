@@ -35,7 +35,9 @@ class list_vip_insert_seq extends list_vip_base_seq;
             if (random_index) begin
                 assert(item.randomize() with {op == INSERT;});
             end else begin
-                assert(item.randomize() with {op == INSERT; index == 'hFFFF;}); // Large index = append
+                assert(item.randomize() with {op == INSERT;});
+                // The last representable slot appends until the list is full.
+                item.index = (cfg != null) ? cfg.LENGTH - 1 : 7;
             end
             finish_item(item);
 

@@ -10,6 +10,9 @@
 class list_vip_seq_item extends uvm_sequence_item;
     `uvm_object_utils(list_vip_seq_item)
 
+    bit reset_seen;
+    int matched_indices[$];
+
     // Transaction fields
     rand list_op_e op;
     rand bit [31:0] data;

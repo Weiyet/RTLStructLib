@@ -17,4 +17,6 @@ package deff_vip_pkg;
     `include "deff_vip_env.sv"
     `include "deff_vip_base_seq.sv"
 
+    `include "deff_vip_random_seq.sv"
+
 endpackage

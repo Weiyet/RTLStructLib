@@ -9,6 +9,8 @@
 
 class lifo_vip_seq_item extends uvm_sequence_item;
     `uvm_object_utils(lifo_vip_seq_item)
+    bit reset_seen;
+    bit bypass;
 
     // Transaction fields
     rand lifo_op_e op;

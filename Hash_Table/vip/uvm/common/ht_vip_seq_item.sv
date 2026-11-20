@@ -6,6 +6,8 @@
 class ht_vip_seq_item extends uvm_sequence_item;
     `uvm_object_utils(ht_vip_seq_item)
 
+    bit reset_seen;
+
     rand ht_op_e op;
     rand bit [31:0] key;
     rand bit [31:0] value;

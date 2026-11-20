@@ -124,3 +124,61 @@ class collision_test extends base_test;
     endtask
 
 endclass
+
+class ht_vip_boundary_seq extends ht_vip_base_seq;
+    `uvm_object_utils(ht_vip_boundary_seq)
+    ht_vip_config cfg;
+    function new(string name = "boundary_seq"); super.new(name); endfunction
+    task send(ht_op_e op, bit [31:0] key, bit [31:0] value);
+        ht_vip_seq_item item = ht_vip_seq_item::type_id::create("item");
+        start_item(item);
+        item.op = op; item.key = key; item.value = value;
+        finish_item(item);
+    endtask
+    task reset_dut();
+        virtual ht_vip_if vif;
+        if (!uvm_config_db#(virtual ht_vip_if)::get(m_sequencer, "", "ht_vip_vif", vif))
+            `uvm_fatal("CONFIG", "Missing interface")
+        @(negedge vif.clk);
+        vif.rst = 1;
+        repeat (3) @(negedge vif.clk);
+        vif.rst = 0;
+        repeat (2) @(negedge vif.clk);
+    endtask
+    task body();
+        if (!uvm_config_db#(ht_vip_config)::get(m_sequencer, "", "ht_vip_cfg", cfg))
+            `uvm_fatal("CONFIG", "Missing config")
+        send(SEARCH, 0, 0);
+        for (int i=0; i<cfg.CHAINING_SIZE; i++) send(INSERT, i*cfg.TOTAL_INDEX, 100+i);
+        send(INSERT, cfg.CHAINING_SIZE*cfg.TOTAL_INDEX, 999);
+        send(INSERT, 0, 32'hffffffff);
+        for (int i=0; i<cfg.CHAINING_SIZE; i++) send(SEARCH, i*cfg.TOTAL_INDEX, 0);
+        send(DELETE, cfg.TOTAL_INDEX, 0);
+        send(SEARCH, cfg.TOTAL_INDEX, 0);
+        send(INSERT, cfg.CHAINING_SIZE*cfg.TOTAL_INDEX, 0);
+        send(SEARCH, cfg.CHAINING_SIZE*cfg.TOTAL_INDEX, 0);
+        send(INSERT, 1, 55);
+        send(SEARCH, 1, 0);
+        send(IDLE, 1, 0);
+        send(DELETE, 32'hffffffff, 0);
+        reset_dut();
+        send(SEARCH, 1, 0);
+        send(INSERT, 0, 0);
+        send(SEARCH, 0, 0);
+    endtask
+endclass
+
+class boundary_test extends base_test;
+    `uvm_component_utils(boundary_test)
+    function new(string name = "boundary_test", uvm_component parent = null);
+        super.new(name, parent);
+    endfunction
+    task run_phase(uvm_phase phase);
+        ht_vip_boundary_seq seq;
+        phase.raise_objection(this);
+        seq = ht_vip_boundary_seq::type_id::create("boundary");
+        seq.start(env.get_sequencer());
+        #100ns;
+        phase.drop_objection(this);
+    endtask
+endclass

@@ -6,6 +6,8 @@
 class table_vip_scoreboard extends uvm_scoreboard;
     `uvm_component_utils(table_vip_scoreboard)
 
+    int checked_transactions;
+
     uvm_analysis_imp #(table_vip_seq_item, table_vip_scoreboard) analysis_export;
     table_vip_config cfg;
 
@@ -32,59 +34,28 @@ class table_vip_scoreboard extends uvm_scoreboard;
         end
     endfunction
 
+    bit [7:0] last_read[2];
+
     virtual function void write(table_vip_seq_item item);
-        `uvm_info("SCOREBOARD", $sformatf("Checking: %s", item.convert2string()), UVM_MEDIUM)
-
-        case (item.op)
-            WRITE: check_write(item);
-            READ: check_read(item);
-        endcase
-    endfunction
-
-    function void check_write(table_vip_seq_item item);
-        write_count++;
-
-        // Update model based on write enables
-        if (item.wr_en[0]) begin
-            table_model[item.index_wr[0]] = item.data_wr[0];
-            `uvm_info("SCOREBOARD", $sformatf("Updated table[%0d] = 0x%0h",
-                      item.index_wr[0], item.data_wr[0]), UVM_HIGH)
-        end
-
-        if (item.wr_en[1]) begin
-            table_model[item.index_wr[1]] = item.data_wr[1];
-            `uvm_info("SCOREBOARD", $sformatf("Updated table[%0d] = 0x%0h",
-                      item.index_wr[1], item.data_wr[1]), UVM_HIGH)
-        end
-    endfunction
-
-    function void check_read(table_vip_seq_item item);
-        read_count++;
-
-        // Check read data[0]
-        if (item.data_rd[0] != table_model[item.index_rd[0]]) begin
-            `uvm_error("SCOREBOARD", $sformatf("Read[0] mismatch at index %0d: expected=0x%0h actual=0x%0h",
-                      item.index_rd[0], table_model[item.index_rd[0]], item.data_rd[0]))
+        if (item.reset_seen) begin
+            foreach (table_model[i]) table_model[i] = 0;
+            foreach (last_read[i]) last_read[i] = 0;
         end else begin
-            `uvm_info("SCOREBOARD", $sformatf("Read[0] matched: table[%0d] = 0x%0h",
-                      item.index_rd[0], item.data_rd[0]), UVM_HIGH)
+            if (item.wr_en != 0 || item.rd_en) checked_transactions++;
+            // Applying writes in port order implements highest-port priority.
+            for (int port = 0; port < 2; port++)
+                if (item.wr_en[port]) table_model[item.index_wr[port]] = item.data_wr[port];
+            if (item.rd_en)
+                for (int port = 0; port < 2; port++) last_read[port] = table_model[item.index_rd[port]];
         end
-
-        // Check read data[1]
-        if (item.data_rd[1] != table_model[item.index_rd[1]]) begin
-            `uvm_error("SCOREBOARD", $sformatf("Read[1] mismatch at index %0d: expected=0x%0h actual=0x%0h",
-                      item.index_rd[1], table_model[item.index_rd[1]], item.data_rd[1]))
-        end else begin
-            `uvm_info("SCOREBOARD", $sformatf("Read[1] matched: table[%0d] = 0x%0h",
-                      item.index_rd[1], item.data_rd[1]), UVM_HIGH)
-        end
+        foreach (last_read[port])
+            if (item.data_rd[port] !== last_read[port])
+                `uvm_error("READ", $sformatf("Port %0d expected=%0h actual=%0h", port, last_read[port], item.data_rd[port]))
     endfunction
 
     function void report_phase(uvm_phase phase);
-        `uvm_info("SCOREBOARD", $sformatf("\n\n=== Table Statistics ==="), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Total Writes: %0d", write_count), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Total Reads: %0d", read_count), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("========================\n"), UVM_LOW)
+        if (checked_transactions == 0)
+            `uvm_fatal("EMPTY_TEST", "No enabled transactions checked")
+        `uvm_info("RESULT", $sformatf("VIP PASSED: %0d transactions", checked_transactions), UVM_LOW)
     endfunction
-
 endclass

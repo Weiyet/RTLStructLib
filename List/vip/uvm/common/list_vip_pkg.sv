@@ -13,7 +13,7 @@ package list_vip_pkg;
     `include "uvm_macros.svh"
 
     // Types and enums matching DUT operations (list.sv line 37-44)
-    typedef enum bit [2:0] {
+    typedef enum bit [3:0] {
         READ        = 3'b000,  // Read data at index
         INSERT      = 3'b001,  // Insert data at index
         FIND_ALL    = 3'b010,  // Find all indices of value
@@ -22,7 +22,7 @@ package list_vip_pkg;
         SORT_ASC    = 3'b101,  // Sort ascending
         SORT_DES    = 3'b110,  // Sort descending
         DELETE      = 3'b111,  // Delete element at index
-        IDLE        = 3'b000   // No operation (same as READ for encoding)
+        IDLE        = 4'b1000  // VIP-only idle; never driven as an RTL opcode
     } list_op_e;
 
     typedef enum {

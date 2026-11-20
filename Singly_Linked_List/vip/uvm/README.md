@@ -1,242 +1,56 @@
-# Singly Linked List UVM VIP (Verification IP) User Guide
+# Singly Linked List SystemVerilog UVM VIP
 
-## 📁 Directory Structure
+## Run with Verilator
 
-```
-uvm/
-├── README.md                                  [User guide and documentation]
-├── common/                                    [Core VIP source files]
-│   ├── sll_vip_pkg.sv                        [Main package + enums]
-│   ├── sll_vip_config.sv                     [Configuration class]
-│   └── sll_vip_seq_item.sv                   [Transaction definitions]
-├── interface/                                 [Interface definition]
-│   └── sll_vip_if.sv                         [Virtual interface]
-├── agent/                                     [Agent layer components]
-│   ├── sll_vip_driver.sv                     [Driver implementation]
-│   ├── sll_vip_monitor.sv                    [Monitor implementation]
-│   ├── sll_vip_sequencer.sv                  [Sequencer]
-│   └── sll_vip_agent.sv                      [Agent wrapper]
-├── env/                                       [Environment layer]
-│   ├── sll_vip_env.sv                        [Environment]
-│   └── sll_vip_scoreboard.sv                 [Checking with singly linked list model]
-├── sequences/                                 [Test sequences]
-│   ├── sll_vip_base_seq.sv                   [Base sequence]
-│   ├── sll_vip_insert_seq.sv                 [Insert sequences (addr & index)]
-│   ├── sll_vip_read_seq.sv                   [Read sequence]
-│   └── sll_vip_delete_seq.sv                 [Delete sequences (addr, index, value)]
-└── sim/                                       [Testbench]
-    ├── tb_top.sv                              [Testbench top module]
-    └── tests/
-        ├── sll_vip_base_test.sv               [Base test class]
-        └── sll_vip_simple_test.sv             [Simple & random tests]
+Use Linux/WSL, GNU Make, Python 3, a C++20 compiler, GNU `timeout`, an SMT
+solver (`z3` on `PATH`) for constrained randomization, and Verilator 5.054 or newer. Set
+`VERILATOR` and `UVM_HOME` using the tested DPI-enabled UVM setup in the
+[Priority Queue guide](../../../Priority_Queue/vip/uvm/README.md#standalone-simulation).
+
+From the repository root:
+
+```sh
+make -C Singly_Linked_List/vip/uvm sim TEST=simple_test SEED=123
+make -C Singly_Linked_List/vip/uvm run TEST=boundary_test SEED=19
 ```
 
-## 🚀 Quick Start
+The local Makefile includes `../../../Utils/vip/Makefile`. `compile` builds,
+`sim` builds and runs, and `run` reuses the executable. Rebuild after source
+changes. `lint` checks elaboration without running the DUT. For smaller C++
+compilation units, pass `VERILATOR_FLAGS="--output-groups 16"`.
 
-**Step 1:** Update interface signals in your testbench:
-```systemverilog
-sll_vip_if dut_if(clk);
-// Connect to DUT
-uvm_config_db#(virtual sll_vip_if)::set(null, "*", "sll_vip_vif", dut_if);
-```
+Logs are `SIM_BUILD/compile.log` and `SIM_BUILD/sim.log` (default `sim_build`).
+`JOBS`, `SIM_TIMEOUT` (wall-clock seconds), and `TB_TIMEOUT_CYCLES` are
+configurable. Simulation failure, watchdog expiry, UVM errors/fatals, and
+missing nonzero scoreboard completion all fail Make.
 
-**Step 2:** Configure DUT parameters in your test:
-```systemverilog
-cfg = sll_vip_config::type_id::create("cfg");
-cfg.DATA_WIDTH = 8;
-cfg.MAX_NODE = 15;
-uvm_config_db#(sll_vip_config)::set(this, "*", "sll_vip_cfg", cfg);
-```
+## Tests and checking
 
-**Step 3:** Create environment:
-```systemverilog
-sll_env = sll_vip_env::type_id::create("sll_env", this);
-```
+Registered scenarios: `simple_test`, `random_test`, `boundary_test`.
+`boundary_test` includes directed edge cases and reset during the scenario;
+`SEED` controls randomized stimulus.
 
-## 🚀 Available Sequences
+Physical-address and index operations, lowest-free-address reuse, head/tail/length/full/empty, first matching value deletion, read data and next links, rejected operations, and reset recovery.
 
-**Insert at Address:**
-```systemverilog
-sll_vip_insert_at_addr_seq insert_seq = sll_vip_insert_at_addr_seq::type_id::create("insert_seq");
-insert_seq.num_inserts = 5;
-insert_seq.start(env.get_sequencer());
-```
+Standalone configuration: **8-bit data, MAX_NODE=15, NULL=15**. The interface widths, DUT parameters
+in `sim/tb_top.sv`, and configuration in `sim/tests/sll_vip_base_test.sv`
+must agree when adapting the bench. Changing the class configuration alone
+does not resize the interface or RTL. Verilator simulation is two-state;
+these tests do not check X/Z propagation.
 
-**Insert at Index:**
-```systemverilog
-sll_vip_insert_at_index_seq insert_seq = sll_vip_insert_at_index_seq::type_id::create("insert_seq");
-insert_seq.num_inserts = 5;
-insert_seq.start(env.get_sequencer());
-```
+## Reuse
 
-**Read from Address:**
-```systemverilog
-sll_vip_read_seq read_seq = sll_vip_read_seq::type_id::create("read_seq");
-read_seq.num_reads = 5;
-read_seq.start(env.get_sequencer());
-```
+Use the source order and include directories in `files.f`. Connect
+`sll_vip_if` to the DUT, publish it under `sll_vip_vif`, and publish a
+matching `sll_vip_config` under `sll_vip_cfg` through `uvm_config_db`.
+Instantiate `sll_vip_env` and start sequences on `env.get_sequencer()`.
+The enclosing bench supplies clocks, reset, and UVM objections. See the
+[block README](../../README.md) for the hardware contract.
 
-**Delete at Address:**
-```systemverilog
-sll_vip_delete_at_addr_seq delete_seq = sll_vip_delete_at_addr_seq::type_id::create("delete_seq");
-delete_seq.num_deletes = 3;
-delete_seq.start(env.get_sequencer());
-```
+## Validation
 
-**Delete at Index:**
-```systemverilog
-sll_vip_delete_at_index_seq delete_seq = sll_vip_delete_at_index_seq::type_id::create("delete_seq");
-delete_seq.num_deletes = 3;
-delete_seq.start(env.get_sequencer());
-```
-
-**Delete by Value:**
-```systemverilog
-sll_vip_delete_value_seq delete_seq = sll_vip_delete_value_seq::type_id::create("delete_seq");
-delete_seq.num_deletes = 2;
-delete_seq.start(env.get_sequencer());
-```
-
-## 🧪 Available Tests
-
-### 1. Simple Test
-Basic insert, read, and delete operations:
-```bash
-vsim -c +UVM_TESTNAME=simple_test -do "run -all; quit"
-```
-
-### 2. Random Test
-Random sequence of insert/read/delete operations:
-```bash
-vsim -c +UVM_TESTNAME=random_test -do "run -all; quit"
-```
-
-## 📋 Singly Linked List Operations
-
-The VIP supports 6 operations matching the DUT (singly_linked_list.sv):
-
-| Operation | op | Description | Inputs | Outputs |
-|-----------|-------|-------------|--------|---------|
-| **READ_ADDR** | 3'b000 | Read data at address | addr_in | data_out, next_node_addr |
-| **INSERT_AT_ADDR** | 3'b001 | Insert after address | addr_in, data_in | head, tail, length |
-| **DELETE_VALUE** | 3'b010 | Delete first occurrence of value | data_in | head, tail, length |
-| **DELETE_AT_ADDR** | 3'b011 | Delete node at address | addr_in | head, tail, length |
-| **INSERT_AT_INDEX** | 3'b101 | Insert at index position | addr_in (index), data_in | head, tail, length |
-| **DELETE_AT_INDEX** | 3'b111 | Delete at index position | addr_in (index) | head, tail, length |
-
-## ✅ Self-Checking Features
-
-The scoreboard automatically verifies:
-- ✅ Data integrity for READ operations
-- ✅ Correct list length after INSERT/DELETE
-- ✅ INSERT when full behavior
-- ✅ READ/DELETE when empty behavior
-- ✅ Address-based operations vs index-based operations
-- ✅ DELETE_VALUE finds correct first occurrence
-- ✅ Fault flag correctness
-- ✅ Head/tail pointer management
-- ✅ Next node pointer correctness
-
-## 📊 Test Coverage Comparison
-
-| tb/sv/tb.sv | UVM VIP Equivalent | Description |
-|-------------|-------------------|-------------|
-| Insert operations | `sll_vip_insert_at_addr_seq` | Insert at address |
-| Insert operations | `sll_vip_insert_at_index_seq` | Insert at index |
-| Read operations | `sll_vip_read_seq` | Read from address |
-| Delete operations | `sll_vip_delete_at_addr_seq` | Delete at address |
-| Delete operations | `sll_vip_delete_at_index_seq` | Delete at index |
-| Delete operations | `sll_vip_delete_value_seq` | Delete by value |
-
-## 🔧 Key Features
-
-1. **Address-based and Index-based Operations**: Supports both addressing schemes
-2. **Singly Linked Structure**: Tracks only next node addresses (forward direction)
-3. **Value-based Deletion**: Can delete nodes by searching for value
-4. **Intelligent Scoreboard**: Models linked list with address and data tracking
-5. **Fault Detection**: Validates boundary conditions and error flags
-6. **Head/Tail Tracking**: Monitors list head and tail pointers
-
-## 🔍 Differences from Doubly Linked List
-
-| Aspect | Singly Linked List | Doubly Linked List |
-|--------|-------------------|-------------------|
-| **Node Structure** | data + next pointer | data + next + previous pointers |
-| **Traversal** | Forward only | Forward and backward |
-| **Operations** | 6 ops (insert/delete/read) | 6 ops (same operations) |
-| **Address Outputs** | Single next pointer | Both pre and next pointers |
-| **Memory Efficiency** | Lower overhead (one pointer) | Higher overhead (two pointers) |
-
-## 🚨 Common Issues & Solutions
-
-### Issue: Interface signal width mismatch
-**Solution:** Update `sll_vip_if.sv` lines 9-18 to match your SLL's parameters:
-```systemverilog
-logic [DATA_WIDTH-1:0] data_in;
-logic [ADDR_WIDTH-1:0] addr_in;
-logic [DATA_WIDTH-1:0] data_out;
-logic [ADDR_WIDTH-1:0] next_node_addr;
-```
-
-### Issue: Address vs Index confusion
-**Solution:**
-- **Address operations (op[2]==0)**: Use actual node addresses from DUT
-- **Index operations (op[2]==1)**: Use sequential index (0, 1, 2, ...)
-
-### Future Work
-- Add assertions for singly-linked integrity (next pointer validity)
-- Add functional coverage for:
-  - Insert/delete at head/tail/middle
-  - Empty to full transitions
-  - Sequential vs random operations
-- Enhanced scoreboard to track full node address mapping
-
-## 📚 Example Usage
-
-```systemverilog
-class my_test extends base_test;
-    `uvm_component_utils(my_test)
-
-    task run_phase(uvm_phase phase);
-        sll_vip_insert_at_index_seq insert_seq;
-        sll_vip_read_seq read_seq;
-        sll_vip_delete_value_seq delete_seq;
-
-        phase.raise_objection(this);
-
-        // Build a list
-        insert_seq = sll_vip_insert_at_index_seq::type_id::create("insert_seq");
-        insert_seq.num_inserts = 5;
-        insert_seq.start(env.get_sequencer());
-
-        #500ns;
-
-        // Read nodes
-        read_seq = sll_vip_read_seq::type_id::create("read_seq");
-        read_seq.num_reads = 5;
-        read_seq.start(env.get_sequencer());
-
-        #500ns;
-
-        // Delete specific values
-        delete_seq = sll_vip_delete_value_seq::type_id::create("delete_seq");
-        delete_seq.num_deletes = 2;
-        delete_seq.start(env.get_sequencer());
-
-        #500ns;
-        phase.drop_objection(this);
-    endtask
-endclass
-```
-
-## 🎯 Key Characteristics
-
-- **Unidirectional Traversal**: Can only navigate forward (head→tail)
-- **Address Management**: Internal addresses managed by DUT, not sequential
-- **Flexible Insert/Delete**: Supports both address-based and index-based operations
-- **Value Search**: Can find and delete nodes by data value
-- **Memory Efficient**: Only stores next pointer per node (no previous pointer)
-
-**Happy Verifying! 🚀**
-
-*This VIP demonstrates advanced verification of pointer-based data structures with UVM.*
+Verilator 5.054 with the pinned UVM library passed 6 RTL simulations
+(all scenarios above, seeds 123 and 19), checking 190 monitored
+transactions/edges in total with zero UVM errors or fatals. Empty-test,
+unknown-test, and forced-watchdog runs each returned failure as expected.
+These results cover the standalone configuration above.

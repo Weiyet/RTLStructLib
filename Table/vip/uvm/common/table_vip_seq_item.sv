@@ -5,6 +5,7 @@
 
 class table_vip_seq_item extends uvm_sequence_item;
     `uvm_object_utils(table_vip_seq_item)
+    bit reset_seen;
 
     rand table_op_e op;
 

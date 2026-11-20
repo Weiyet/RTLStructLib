@@ -53,17 +53,14 @@ operation; destination samples may skip source states.
 
 Simulation checks ordering and Gray transitions, not metastability or routed
 timing. Preserve synchronizer placement attributes, constrain both clocks,
-and bound Gray-bus delay/skew to the first synchronizer stage. The helper in
-[`constraints/cdc.tcl`](constraints/cdc.tcl) accepts verified source/first-stage
-register collections and both clock periods in ns; it applies a conservative
-minimum-period budget in both directions. Inspect synthesized register names
-before calling `rtlstruct_fifo_cdc`; no hierarchy is assumed.
+and bound Gray-bus delay/skew to the first synchronizer stage using constraints
+from the integrating project. Inspect synthesized register names and clock
+periods when defining these paths.
 
 Do not override those maximum-delay paths with blanket asynchronous clock
 groups or false paths. Keep the first-to-second synchronizer paths timed
 normally. Review reset recovery/removal, data-memory crossings, CDC reports,
-`report_bus_skew`, and timing reports in the integrating design. These
-constraints follow [AMD UG903](https://docs.amd.com/r/en-US/ug903-vivado-using-constraints/Constraining-Asynchronous-Signals).
+`report_bus_skew`, and timing reports in the integrating design.
 No Vivado CDC analysis, place/route or STA sign-off is included here.
 
 ## Verification
@@ -81,5 +78,6 @@ seeded traffic. The matrix contains 42 real-RTL runs, six negative checks
 (timeouts and illegal parameters), four synthesis builds and four functional
 mapped-netlist simulations. `WAVES=1` enables VCD/FST output.
 
-Legacy UVM, pyUVM and C++ VIP are not part of this verified suite; integrations
-must honor the updated reset backpressure and asynchronous flag latency.
+The [SV UVM bench](vip/uvm/README.md) has a separate Verilator regression.
+Legacy pyUVM and C++ VIP are not part of the standalone suite above; integrations
+must honor reset backpressure and asynchronous flag latency.

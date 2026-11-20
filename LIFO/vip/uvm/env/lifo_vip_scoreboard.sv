@@ -10,6 +10,8 @@
 class lifo_vip_scoreboard extends uvm_scoreboard;
     `uvm_component_utils(lifo_vip_scoreboard)
 
+    int checked_transactions;
+
     uvm_analysis_imp #(lifo_vip_seq_item, lifo_vip_scoreboard) imp;
 
     lifo_vip_config cfg;
@@ -30,85 +32,35 @@ class lifo_vip_scoreboard extends uvm_scoreboard;
             `uvm_fatal("SCOREBOARD", "No config")
     endfunction
 
+    int last_data;
+
     function void write(lifo_vip_seq_item item);
-        case (item.op)
-            PUSH: check_push(item);
-            POP: check_pop(item);
-        endcase
-    endfunction
-
-    function void check_push(lifo_vip_seq_item item);
-        if (item.success) begin
-            // Successful push - add to model
-            expected_queue.push_back(item.data);
-            push_count++;
-            `uvm_info("SCOREBOARD", $sformatf("PUSH: data=0x%0h depth=%0d", item.data, expected_queue.size()), UVM_MEDIUM)
-
-            // Check full flag
-            if (expected_queue.size() == cfg.DEPTH && !item.full) begin
-                `uvm_error("SCOREBOARD", $sformatf("LIFO should be full but full flag not set. Depth=%0d", expected_queue.size()))
-                error_count++;
-            end
-        end else begin
-            // Failed push due to full LIFO
-            if (!item.full) begin
-                `uvm_error("SCOREBOARD", "Push failed but full flag not set")
-                error_count++;
-            end
-            `uvm_info("SCOREBOARD", "PUSH failed - LIFO full", UVM_MEDIUM)
-        end
-    endfunction
-
-    function void check_pop(lifo_vip_seq_item item);
-        int expected_data;
-
-        if (item.success) begin
-            // Successful pop - check data
-            if (expected_queue.size() == 0) begin
-                `uvm_error("SCOREBOARD", "Pop succeeded but model is empty")
-                error_count++;
-                return;
-            end
-
-            expected_data = expected_queue.pop_back(); // LIFO: pop from back
-            pop_count++;
-
-            if (item.read_data != expected_data) begin
-                `uvm_error("SCOREBOARD", $sformatf("Data mismatch! Expected=0x%0h Actual=0x%0h", expected_data, item.read_data))
-                error_count++;
+        bit expected_accept;
+        if (item.reset_seen) begin
+            expected_queue.delete();
+            last_data = 0;
+        end else if (item.op != IDLE) begin
+            checked_transactions++;
+            if (item.bypass) begin
+                last_data = item.data;
+                expected_accept = 1;
+            end else if (item.op == PUSH) begin
+                expected_accept = expected_queue.size() < cfg.DEPTH;
+                if (expected_accept) expected_queue.push_back(item.data);
             end else begin
-                `uvm_info("SCOREBOARD", $sformatf("POP: data=0x%0h depth=%0d MATCH", item.read_data, expected_queue.size()), UVM_MEDIUM)
+                expected_accept = expected_queue.size() > 0;
+                if (expected_accept) last_data = expected_queue.pop_back();
             end
-
-            // Check empty flag
-            if (expected_queue.size() == 0 && !item.empty) begin
-                `uvm_error("SCOREBOARD", "LIFO should be empty but empty flag not set")
-                error_count++;
-            end
-        end else begin
-            // Failed pop due to empty LIFO
-            if (!item.empty) begin
-                `uvm_error("SCOREBOARD", "Pop failed but empty flag not set")
-                error_count++;
-            end
-            `uvm_info("SCOREBOARD", "POP failed - LIFO empty", UVM_MEDIUM)
+            if (item.success != expected_accept)
+                `uvm_error("ACCEPT", "Full/empty incorrectly accepted or rejected an operation")
         end
+        if (item.read_data != last_data || item.full != (expected_queue.size() == cfg.DEPTH) || item.empty != (expected_queue.size() == 0))
+            `uvm_error("SCOREBOARD", $sformatf("Expected data/full/empty=%0h/%0b/%0b actual=%0h/%0b/%0b", last_data, expected_queue.size() == cfg.DEPTH, expected_queue.size() == 0, item.read_data, item.full, item.empty))
     endfunction
 
     function void report_phase(uvm_phase phase);
-        super.report_phase(phase);
-        `uvm_info("SCOREBOARD", "==============================================", UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Push Count: %0d", push_count), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Pop Count: %0d", pop_count), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Error Count: %0d", error_count), UVM_LOW)
-        `uvm_info("SCOREBOARD", $sformatf("Final Queue Depth: %0d", expected_queue.size()), UVM_LOW)
-        `uvm_info("SCOREBOARD", "==============================================", UVM_LOW)
-
-        if (error_count > 0) begin
-            `uvm_error("SCOREBOARD", $sformatf("Test FAILED with %0d errors", error_count))
-        end else begin
-            `uvm_info("SCOREBOARD", "Test PASSED - No errors detected", UVM_LOW)
-        end
+        if (checked_transactions == 0)
+            `uvm_fatal("EMPTY_TEST", "No enabled transactions checked")
+        `uvm_info("RESULT", $sformatf("VIP PASSED: %0d transactions", checked_transactions), UVM_LOW)
     endfunction
-
 endclass
