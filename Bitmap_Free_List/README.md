@@ -63,6 +63,7 @@ Use Python 3 with `cocotb==1.8.1` for the Python bench. From Linux/WSL:
 make -C Bitmap_Free_List/tb/sv sim CAPACITY=5 SEED=123
 make -C Bitmap_Free_List/tb/cocotb CAPACITY=33 SEED=19
 make -C Bitmap_Free_List/tb/sv netlist_sim CAPACITY=5
+make -C Bitmap_Free_List/tb/sv netlist_sim TECH=sky130 CAPACITY=5 PDK_ROOT=/path/to/pdks
 ```
 
 The SV bench tracks owned IDs; cocotb uses a Python set and also checks that
@@ -95,3 +96,11 @@ verilator --binary --timing --assert -Wno-fatal --top-module tb \
 Synthesis includes structural checks and rejects inferred latches. CAPACITY=0,
 the SV watchdog, and the cocotb watchdog each returned failure as expected
 (three negative checks). These are functional checks, not timing sign-off.
+
+SKY130 synthesis and GLS use the shared `TECH=sky130` flow and external HD
+standard-cell models. See the [repository setup](../README.md#sky130-synthesis-and-functional-gls)
+for library paths, corner selection, and functional-simulation scope.
+
+The SKY130 HD TT flow passed synthesis for CAPACITY=1/5/33 and all six GLS
+runs with seeds 123/19. Existing Xilinx mapped simulations also passed for
+these capacities after adding technology selection.
