@@ -1,0 +1,10 @@
++incdir+common
++incdir+agent
++incdir+env
++incdir+sequences
++incdir+sim/tests
+common/bitmap_vip_params_pkg.sv
+interface/bitmap_vip_if.sv
+../../src/bitmap_free_list.sv
+common/bitmap_vip_pkg.sv
+sim/tb_top.sv

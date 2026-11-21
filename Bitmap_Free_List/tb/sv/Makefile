@@ -1,0 +1,10 @@
+DUT = bitmap_free_list
+SIM_OPTS ?= ../../src/bitmap_free_list.sv
+CAPACITY ?= 16
+SEED ?= 123
+TB_TIMEOUT_CYCLES ?= 20000
+PARAMETERS = CAPACITY TB_TIMEOUT_CYCLES
+SYNTH_PARAMETERS = CAPACITY
+NETLIST_DEFINE = BITMAP_FREE_LIST_NETLIST
+
+include ../../../Utils/tb/sv/Makefile

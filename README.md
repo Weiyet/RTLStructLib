@@ -10,7 +10,7 @@
 ![Verilog](https://img.shields.io/badge/Verilog-IEEE_1364--2005-blue)
 ![SystemVerilog](https://img.shields.io/badge/SystemVerilog-IEEE_1800--2017-blue)
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![Version](https://img.shields.io/badge/Version-v1.3-green)
+![Version](https://img.shields.io/badge/Version-v1.4-green)
 ![Status](https://img.shields.io/badge/Status-In_Development-yellow)
   
 </div>
@@ -37,6 +37,7 @@ By using these pre-built RTL modules, engineers can accelerate development, redu
 - Table - Indexed storage mechanism, similar to a register file, enabling rapid direct access and simultaneous read write access to data without hashing. <br>
 - List - Support sorting, find_index, delete, insert operations <br>
 - Circular Linked List - Bidirectional circular traversal, address/index operations, and bounded value search. <br>
+- [Bitmap Free List](Bitmap_Free_List/README.md) - Lowest-free-ID allocation, checked release, and same-cycle slot reuse. <br>
 - [Priority Queue](Priority_Queue/README.md) - Bounded binary heap with min/max priority, push/pop/peek, and request/response backpressure. <br>
 - Hash Table – Optimized for high-speed lookups, currently only supports modulus hashing and simple multi-staged chaining to handle collision <br>
 - Dual Edge Flip Flop - Double input and output rate structure which can latch data on both rising and falling edge <br> 
